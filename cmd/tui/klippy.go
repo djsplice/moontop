@@ -365,7 +365,7 @@ func truncateRunes(s string, n int) string {
 // we're still waiting on server.info.
 func (m model) renderNotReady() string {
 	var b strings.Builder
-	b.WriteString(appTitleStyle.Render("🌡 Moontop") + "\n\n")
+	b.WriteString(appTitleStyle.Render(appTitle) + "\n\n")
 	switch {
 	case m.klippy.bannerVisible():
 		b.WriteString(renderKlippyBanner(m.klippy, m.width) + "\n")

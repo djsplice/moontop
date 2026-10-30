@@ -1429,7 +1429,7 @@ func (m model) View() string {
 	}
 	body := bodyStyle.Render(stacked)
 
-	title := appTitleStyle.Render("🌡 Moontop")
+	title := appTitleStyle.Render(appTitle)
 	var barView string
 	if m.job.State == "printing" {
 		barView = m.progress.View()

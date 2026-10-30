@@ -2,6 +2,9 @@ package main
 
 import "github.com/charmbracelet/lipgloss"
 
+// appTitle is the wordmark shown at the top of every screen.
+const appTitle = "◐ Moontop"
+
 // ---------------------------------------------------------------------------
 // Color palette
 //
