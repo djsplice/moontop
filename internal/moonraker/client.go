@@ -1,9 +1,10 @@
 // Package moonraker provides a WebSocket JSON-RPC 2.0 client for the
 // Moonraker 3D-printer management API.
 //
-// It handles connection, request/response correlation, and exposes
-// channels for asynchronous server notifications (status updates,
-// gcode responses).
+// It handles connection, request/response correlation, and exposes a
+// single channel of server notifications (method + raw params). Typed
+// parsing of individual notifications lives in notify.go; routing them
+// is the consumer's job.
 package moonraker
 
 import (
@@ -66,6 +67,14 @@ type StatusUpdate struct {
 	Timestamp float64
 }
 
+// Notification is one server-pushed JSON-RPC notification, untouched
+// apart from envelope decoding. Method is e.g. "notify_status_update",
+// "notify_klippy_ready"; Params is the raw params array (may be empty).
+type Notification struct {
+	Method string
+	Params []json.RawMessage
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -74,11 +83,19 @@ type StatusUpdate struct {
 //
 // Channel lifecycle across reconnect:
 //
-//   - updates, gcodeResponses, disconnected are created once in New()
-//     and survive Reconnect(). Long-lived consumer goroutines do NOT
-//     need to be re-issued after a reconnect — they remain blocked on
-//     these channels and naturally resume reading once a fresh
-//     readLoop starts pushing data.
+//   - notifications and disconnected are created once in New() and
+//     survive Reconnect(). Long-lived consumer goroutines do NOT need
+//     to be re-issued after a reconnect — they remain blocked on these
+//     channels and naturally resume reading once a fresh readLoop
+//     starts pushing data.
+//
+//   - Subscriptions do NOT survive. Moonraker drops a connection's
+//     subscription when the socket closes, and also when Klippy
+//     disconnects/restarts (the socket stays up in that case). The
+//     client deliberately doesn't replay subscriptions itself: the
+//     consumer owns one "initialize" path (identify → check Klippy
+//     state → subscribe) and runs it after Reconnect and after
+//     notify_klippy_ready alike.
 //
 //   - The underlying *websocket.Conn IS replaced on Reconnect. Each
 //     readLoop goroutine captures its own conn at start, so an old
@@ -104,15 +121,9 @@ type Client struct {
 	mu      sync.Mutex
 	pending map[int64]chan *rpcResponse
 
-	// Notification channels exposed to consumers. Survive reconnect.
-	updates        chan StatusUpdate
-	gcodeResponses chan string
-	disconnected   chan error // buffered=1: signals a connection loss once per drop
-
-	// Last Subscribe map, replayed on Reconnect so consumers don't
-	// need to re-subscribe themselves.
-	subMu      sync.Mutex
-	lastSubMap map[string][]string
+	// Channels exposed to consumers. Survive reconnect.
+	notifications chan Notification
+	disconnected  chan error // buffered=1: signals a connection loss once per drop
 
 	// Set by Close() so the readLoop exit suppresses the disconnect
 	// signal during normal shutdown.
@@ -126,12 +137,11 @@ type Client struct {
 // It dials ws://<host>/websocket and starts the background read loop.
 func New(host string) (*Client, error) {
 	c := &Client{
-		host:           host,
-		pending:        make(map[int64]chan *rpcResponse),
-		updates:        make(chan StatusUpdate, 64),
-		gcodeResponses: make(chan string, 64),
-		disconnected:   make(chan error, 1),
-		done:           make(chan struct{}),
+		host:          host,
+		pending:       make(map[int64]chan *rpcResponse),
+		notifications: make(chan Notification, notificationBuffer),
+		disconnected:  make(chan error, 1),
+		done:          make(chan struct{}),
 	}
 	if err := c.dial(); err != nil {
 		return nil, err
@@ -155,9 +165,15 @@ func (c *Client) dial() error {
 	return nil
 }
 
-// Reconnect re-establishes the websocket and replays the last Subscribe
-// call's object map so live updates resume without consumer involvement.
-// One attempt — the caller is expected to drive backoff/retry.
+// notificationBuffer sizes the notification channel. Status diffs are
+// dropped (with a log line) if the consumer falls this far behind, so
+// it's generous: a burst of ~4 Hz status updates plus gcode output
+// during a macro shouldn't come close.
+const notificationBuffer = 256
+
+// Reconnect re-establishes the websocket. One attempt — the caller
+// drives backoff/retry. It does not resubscribe (see the Client doc
+// comment): a successful return means the socket is up, nothing more.
 func (c *Client) Reconnect(ctx context.Context) error {
 	if c.closing.Load() {
 		return fmt.Errorf("client is closing")
@@ -166,16 +182,6 @@ func (c *Client) Reconnect(ctx context.Context) error {
 		return err
 	}
 	go c.readLoop(c.conn)
-
-	c.subMu.Lock()
-	sub := c.lastSubMap
-	c.subMu.Unlock()
-	if sub == nil {
-		return nil
-	}
-	if _, err := c.Subscribe(sub); err != nil {
-		return fmt.Errorf("resubscribe: %w", err)
-	}
 	return nil
 }
 
@@ -186,16 +192,11 @@ func (c *Client) Disconnected() <-chan error {
 	return c.disconnected
 }
 
-// Updates returns a read-only channel that emits parsed
-// notify_status_update notifications from Moonraker.
-func (c *Client) Updates() <-chan StatusUpdate {
-	return c.updates
-}
-
-// GcodeResponses returns a read-only channel that emits
-// notify_gcode_response strings from Moonraker.
-func (c *Client) GcodeResponses() <-chan string {
-	return c.gcodeResponses
+// Notifications returns the single channel of every server-pushed
+// notification. Use ParseStatusUpdate / ParseGcodeResponse (notify.go)
+// to decode the ones you care about.
+func (c *Client) Notifications() <-chan Notification {
+	return c.notifications
 }
 
 // Close shuts down the WebSocket connection.
@@ -365,73 +366,19 @@ func (c *Client) dispatch(raw []byte) {
 		return
 	}
 
-	// It's a notification.
+	// It's a notification — forward it as-is. Routing is the
+	// consumer's job; the client has no opinion on which ones matter.
 	var notif rpcNotification
 	if err := json.Unmarshal(raw, &notif); err != nil {
 		log.Printf("moonraker: unmarshal notification: %v", err)
 		return
 	}
 
-	switch notif.Method {
-	case "notify_status_update":
-		c.handleStatusUpdate(notif.Params)
-	case "notify_gcode_response":
-		c.handleGcodeResponse(notif.Params)
-	default:
-		// Ignore unknown notifications silently — Moonraker sends
-		// several we don't care about yet (notify_proc_stat_update,
-		// notify_history_changed, etc.).
-	}
-}
-
-// handleStatusUpdate parses a notify_status_update params array.
-// params[0] = object diffs, params[1] = timestamp.
-func (c *Client) handleStatusUpdate(params []json.RawMessage) {
-	if len(params) < 1 {
-		return
-	}
-
-	var objects map[string]map[string]any
-	if err := json.Unmarshal(params[0], &objects); err != nil {
-		log.Printf("moonraker: parse status update objects: %v", err)
-		return
-	}
-
-	var ts float64
-	if len(params) >= 2 {
-		_ = json.Unmarshal(params[1], &ts)
-	}
-
-	update := StatusUpdate{
-		Objects:   objects,
-		Timestamp: ts,
-	}
-
 	select {
-	case c.updates <- update:
+	case c.notifications <- Notification{Method: notif.Method, Params: notif.Params}:
 	default:
-		// Drop if consumer is too slow — better than blocking the
-		// read loop.
-		log.Println("moonraker: status update channel full, dropping")
-	}
-}
-
-// handleGcodeResponse parses a notify_gcode_response params array.
-// params[0] = response string.
-func (c *Client) handleGcodeResponse(params []json.RawMessage) {
-	if len(params) < 1 {
-		return
-	}
-
-	var msg string
-	if err := json.Unmarshal(params[0], &msg); err != nil {
-		log.Printf("moonraker: parse gcode response: %v", err)
-		return
-	}
-
-	select {
-	case c.gcodeResponses <- msg:
-	default:
-		log.Println("moonraker: gcode response channel full, dropping")
+		// Drop rather than block the read loop — a blocked read loop
+		// would also stall RPC responses.
+		log.Printf("moonraker: notification channel full, dropping %s", notif.Method)
 	}
 }

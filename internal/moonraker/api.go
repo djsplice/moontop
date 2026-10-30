@@ -28,15 +28,16 @@ func (c *Client) ListObjects() ([]string, error) {
 	return body.Objects, nil
 }
 
-
 // Subscribe subscribes to Moonraker printer object status updates.
 //
 // objects maps printer-object names to the list of fields to subscribe
 // to. Use nil (or an empty slice) as the value to subscribe to all
 // fields for that object.
 //
-// The map is remembered so Reconnect can replay it after a connection
-// drop — callers don't need to re-subscribe themselves.
+// Moonraker treats each subscribe request as a replacement for the
+// previous one on the same connection, so callers must always send
+// the complete object map. Subscriptions are lost on reconnect and on
+// Klippy restart; the caller re-subscribes (see Client doc comment).
 //
 // Example:
 //
@@ -47,9 +48,6 @@ func (c *Client) ListObjects() ([]string, error) {
 //
 // The initial state snapshot is returned as a StatusUpdate.
 func (c *Client) Subscribe(objects map[string][]string) (*StatusUpdate, error) {
-	c.subMu.Lock()
-	c.lastSubMap = objects
-	c.subMu.Unlock()
 	// Moonraker expects null (not an empty array) to mean "all fields",
 	// so we convert []string{} / nil → JSON null.
 	mapped := make(map[string]any, len(objects))
@@ -72,8 +70,8 @@ func (c *Client) Subscribe(objects map[string][]string) (*StatusUpdate, error) {
 
 	// The response contains {"eventtime": float, "status": {...}}.
 	var body struct {
-		EventTime float64                       `json:"eventtime"`
-		Status    map[string]map[string]any     `json:"status"`
+		EventTime float64                   `json:"eventtime"`
+		Status    map[string]map[string]any `json:"status"`
 	}
 	if err := json.Unmarshal(result, &body); err != nil {
 		return nil, err
@@ -212,4 +210,97 @@ func (c *Client) SetVelocityLimit(velocity, accel, squareCornerVelocity, minCrui
 		return fmt.Errorf("set velocity limit: no parameters to set")
 	}
 	return c.GcodeScript(strings.Join(parts, " "))
+}
+
+// ---------------------------------------------------------------------------
+// Connection identity and Klippy lifecycle
+// ---------------------------------------------------------------------------
+
+// Identify registers this websocket connection with Moonraker
+// (server.connection.identify) so it shows up by name in Moonraker's
+// connection list. clientType is one of Moonraker's accepted types:
+// web, mobile, desktop, display, bot, agent, other.
+func (c *Client) Identify(name, version, clientType, url string) error {
+	params := map[string]any{
+		"client_name": name,
+		"version":     version,
+		"type":        clientType,
+		"url":         url,
+	}
+	_, err := c.call("server.connection.identify", params)
+	return err
+}
+
+// ServerInfo is the subset of server.info used to decide whether Klippy
+// can be subscribed to yet.
+type ServerInfo struct {
+	KlippyConnected bool   `json:"klippy_connected"`
+	KlippyState     string `json:"klippy_state"` // ready | startup | shutdown | error | disconnected
+}
+
+// GetServerInfo wraps server.info. Always answerable by Moonraker, even
+// while Klippy is down — that's what makes it the right first call.
+func (c *Client) GetServerInfo() (ServerInfo, error) {
+	var info ServerInfo
+	result, err := c.call("server.info", nil)
+	if err != nil {
+		return info, err
+	}
+	err = json.Unmarshal(result, &info)
+	return info, err
+}
+
+// PrinterInfo is the subset of printer.info carrying Klippy's own state
+// and the human-readable reason (config error text, shutdown cause).
+type PrinterInfo struct {
+	State        string `json:"state"`
+	StateMessage string `json:"state_message"`
+}
+
+// GetPrinterInfo wraps printer.info. Fails while Klippy is disconnected.
+func (c *Client) GetPrinterInfo() (PrinterInfo, error) {
+	var info PrinterInfo
+	result, err := c.call("printer.info", nil)
+	if err != nil {
+		return info, err
+	}
+	err = json.Unmarshal(result, &info)
+	return info, err
+}
+
+// RestartKlipper wraps printer.restart (Klipper's RESTART: reload
+// config, host side only).
+func (c *Client) RestartKlipper() error {
+	_, err := c.call("printer.restart", nil)
+	return err
+}
+
+// FirmwareRestart wraps printer.firmware_restart (FIRMWARE_RESTART:
+// reset MCUs and reload config — the way out of a shutdown).
+func (c *Client) FirmwareRestart() error {
+	_, err := c.call("printer.firmware_restart", nil)
+	return err
+}
+
+// GcodeStoreEntry is one cached console line from server.gcode_store.
+type GcodeStoreEntry struct {
+	Message string  `json:"message"`
+	Time    float64 `json:"time"`
+	Type    string  `json:"type"` // "command" | "response"
+}
+
+// GcodeStore returns up to count of Moonraker's most recent cached
+// console lines, oldest first.
+func (c *Client) GcodeStore(count int) ([]GcodeStoreEntry, error) {
+	result, err := c.call("server.gcode_store", map[string]any{"count": count})
+	if err != nil {
+		return nil, err
+	}
+	var body struct {
+		Store []GcodeStoreEntry `json:"gcode_store"`
+	}
+	if err := json.Unmarshal(result, &body); err != nil {
+		return nil, err
+	}
+	return body.Store, nil
 }

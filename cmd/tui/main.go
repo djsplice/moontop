@@ -53,20 +53,19 @@ func isSensorObject(name string) bool {
 // Message types
 // ---------------------------------------------------------------------------
 
-type statusMsg moonraker.StatusUpdate
-
-type gcodeRespMsg string
-
 // jogStepSizes mirror Mainsail's "Toolhead" step selector.
 var jogStepSizes = []float64{0.1, 1, 10, 25, 50, 100}
 
 const jogFeedrate = 1500 // mm/min, used for relative G1 moves
 
+// initMsg carries the snapshot from a successful subscribe. Klippy is
+// ready by construction (initialize only subscribes when it is).
 type initMsg struct {
 	sensors  map[string]*sensorState
 	position [3]float64
 	job      printJob
 	limits   limits
+	klippy   klippyStatus
 	err      error
 }
 
@@ -258,6 +257,16 @@ type model struct {
 	historyIdx   int
 	historyDraft string
 
+	// Klippy state (from server.info, printer.info, the webhooks
+	// object and klippy notifications). lastKlippy is what the UI last
+	// reacted to — see klippyChanged.
+	klippy     klippyStatus
+	lastKlippy klippyStatus
+
+	// Last initialize failure, shown on the not-ready screen. Never
+	// fatal: the next klippy_ready / reconnect retries.
+	initErr error
+
 	// When non-nil, a y/n confirmation prompt is pending. Intercepts
 	// global key routing — see Update(). This same slot serves any
 	// confirm-gated action (start print, cancel print, future AFC
@@ -355,10 +364,10 @@ func initialModel(client *moonraker.Client) model {
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.initialize(),
-		m.listenUpdates(),
-		m.listenGcode(),
+		m.listenNotifications(),
 		m.listenDisconnect(),
 		m.loadFiles(),
+		m.loadGcodeStore(),
 	)
 }
 
@@ -417,6 +426,7 @@ func (m model) startPrint(filename string) tea.Cmd {
 type pendingConfirmation struct {
 	prompt string  // human-readable, rendered above the footer
 	onYes  tea.Cmd // executed if the user presses y
+	danger bool    // render as a red block (E-stop, restart mid-print)
 }
 
 // jobControlMsg is emitted after a pause/resume/cancel call completes.
@@ -463,11 +473,42 @@ func (m *model) requireConnected(what string, cmd tea.Cmd) tea.Cmd {
 	return nil
 }
 
-// initialize discovers sensor objects, subscribes to them, and returns
-// the initial state snapshot.
+// initialize is the single (re)subscribe path, run at startup, after a
+// websocket reconnect, and on notify_klippy_ready:
+//
+//  1. identify this connection (best effort),
+//  2. ask server.info whether Klippy is ready — if not, report its state
+//     and stop; notify_klippy_ready will run this again,
+//  3. list objects and send ONE complete subscribe map (Moonraker
+//     replaces, not merges, a connection's subscription).
 func (m model) initialize() tea.Cmd {
+	client := m.client
 	return func() tea.Msg {
-		objects, err := m.client.ListObjects()
+		// Identify failure (e.g. an old Moonraker) isn't worth
+		// blocking on; the connection works without it.
+		_ = client.Identify(clientName, clientVersion, "other", clientURL)
+
+		info, err := client.GetServerInfo()
+		if err != nil {
+			return initMsg{err: fmt.Errorf("server info: %w", err)}
+		}
+		if !info.KlippyConnected || info.KlippyState != "ready" {
+			state := info.KlippyState
+			if !info.KlippyConnected {
+				state = "disconnected"
+			}
+			msg := klippyStateMsg{state: state}
+			// printer.info carries the reason (config error text,
+			// shutdown cause) whenever Klippy is connected at all.
+			if info.KlippyConnected {
+				if pi, err := client.GetPrinterInfo(); err == nil {
+					msg.message = pi.StateMessage
+				}
+			}
+			return msg
+		}
+
+		objects, err := client.ListObjects()
 		if err != nil {
 			return initMsg{err: fmt.Errorf("list objects: %w", err)}
 		}
@@ -483,8 +524,6 @@ func (m model) initialize() tea.Cmd {
 			return initMsg{err: fmt.Errorf("no heater/sensor objects found")}
 		}
 
-		// Add toolhead + print_stats alongside the heaters — same
-		// subscription, just more objects in the request map.
 		subMap["toolhead"] = []string{
 			"position",
 			"max_velocity", "max_accel",
@@ -492,8 +531,12 @@ func (m model) initialize() tea.Cmd {
 		}
 		subMap["print_stats"] = []string{"state", "filename", "print_duration"}
 		subMap["virtual_sdcard"] = []string{"progress"}
+		// webhooks carries Klippy's own state + message, so a
+		// shutdown (E-stop, MCU error) shows up in the same diff
+		// stream as everything else.
+		subMap["webhooks"] = []string{"state", "state_message"}
 
-		initial, err := m.client.Subscribe(subMap)
+		initial, err := client.Subscribe(subMap)
 		if err != nil {
 			return initMsg{err: fmt.Errorf("subscribe: %w", err)}
 		}
@@ -507,31 +550,10 @@ func (m model) initialize() tea.Cmd {
 		var position [3]float64
 		job := printJob{State: "standby"}
 		var lim limits
-		mergeStatus(sensors, &position, &job, &lim, initial.Objects)
+		klippy := klippyStatus{State: "ready"}
+		mergeStatus(sensors, &position, &job, &lim, &klippy, initial.Objects)
 
-		return initMsg{sensors: sensors, position: position, job: job, limits: lim}
-	}
-}
-
-// listenUpdates blocks on one status update, then is re-issued by Update().
-func (m model) listenUpdates() tea.Cmd {
-	return func() tea.Msg {
-		update, ok := <-m.client.Updates()
-		if !ok {
-			return errMsg{fmt.Errorf("updates channel closed")}
-		}
-		return statusMsg(update)
-	}
-}
-
-// listenGcode blocks on one gcode response line, then is re-issued.
-func (m model) listenGcode() tea.Cmd {
-	return func() tea.Msg {
-		line, ok := <-m.client.GcodeResponses()
-		if !ok {
-			return errMsg{fmt.Errorf("gcode response channel closed")}
-		}
-		return gcodeRespMsg(line)
+		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy}
 	}
 }
 
@@ -557,10 +579,22 @@ func mergeStatus(
 	position *[3]float64,
 	job *printJob,
 	lim *limits,
+	klippy *klippyStatus,
 	objects map[string]map[string]any,
 ) {
 	for name, fields := range objects {
 		switch {
+		case name == "webhooks":
+			if v, ok := fields["state"]; ok {
+				if s, ok := v.(string); ok {
+					klippy.State = s
+				}
+			}
+			if v, ok := fields["state_message"]; ok {
+				if s, ok := v.(string); ok {
+					klippy.Message = s
+				}
+			}
 		case name == "toolhead":
 			if v, ok := fields["position"]; ok {
 				if arr, ok := v.([]any); ok {
@@ -641,6 +675,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
+		// 0. E-stop arms from any pane (console included — ctrl+x
+		//    isn't a textinput binding) and replaces any other
+		//    pending prompt.
+		if msg.String() == "ctrl+x" {
+			m.armEmergencyStop()
+			return m, nil
+		}
+
 		// 1. Confirmation prompt intercepts first — when one is armed,
 		//    only y/n/esc are meaningful; everything else is swallowed.
 		if m.confirmation != nil {
@@ -678,6 +720,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, handled := m.handleJobControl(msg); handled {
 				return m, cmd
 			}
+			if cmd, handled := m.handleKlippyControl(msg); handled {
+				return m, cmd
+			}
 		}
 
 		// Route the key to the focused sub-model / handler.
@@ -705,9 +750,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case initMsg:
 		if msg.err != nil {
-			m.err = msg.err
+			m.initErr = msg.err
+			m.appendLog(fmt.Sprintf("!! init: %v", msg.err))
 			return m, nil
 		}
+		m.initErr = nil
+		m.klippy = msg.klippy
 		m.sensors = msg.sensors
 		m.sensorNames = sortedKeys(msg.sensors)
 		m.position = msg.position
@@ -718,36 +766,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeLayout()
 		m.rebuildRows()
 		m.refreshTuningInputs()
+		m.klippyChanged()
 
-	case statusMsg:
-		if !m.ready {
-			return m, m.listenUpdates()
+	case klippyStateMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! printer info: %v", msg.err))
+			return m, nil
 		}
-		mergeStatus(m.sensors, &m.position, &m.job, &m.limits, msg.Objects)
-		m.rebuildRows()
-		m.refreshTuningInputs()
-		// Drive the progress bar's animation toward the new live
-		// percent. SetPercent returns a tea.Cmd that emits FrameMsgs
-		// until the bar reaches the target — we batch it alongside
-		// the next listenUpdates Cmd so neither blocks the other.
-		var animCmd tea.Cmd
-		if m.job.State == "printing" {
-			animCmd = m.progress.SetPercent(m.job.Progress)
-		} else {
-			// Snap to 0 between prints so the next print starts at 0,
-			// not wherever the bar left off.
-			animCmd = m.progress.SetPercent(0)
+		m.setKlippy(msg.state, msg.message)
+		return m, nil
+
+	case notificationMsg:
+		return m, m.handleNotification(msg)
+
+	case klippyActionMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! %s: %v", msg.action, msg.err))
 		}
-		return m, tea.Batch(m.listenUpdates(), animCmd)
+		return m, nil
+
+	case gcodeStoreMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! console history: %v", msg.err))
+			return m, nil
+		}
+		// Prepend: live lines may already have arrived while the
+		// request was in flight.
+		lines := backfillLines(msg.entries)
+		if len(lines) > 0 {
+			lines = append(lines, "** ── live ──")
+			m.logLines = append(lines, m.logLines...)
+			m.refreshConsole()
+		}
+		return m, nil
 
 	case progress.FrameMsg:
 		pm, cmd := m.progress.Update(msg)
 		m.progress = pm.(progress.Model)
 		return m, cmd
-
-	case gcodeRespMsg:
-		m.appendLog(string(msg))
-		return m, m.listenGcode()
 
 	case gcodeSentMsg:
 		if msg.err != nil {
@@ -798,12 +854,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.reconnectAttempt = 0
 			m.nextRetryIn = 0
 			m.appendLog(fmt.Sprintf("** reconnected (attempt %d)", msg.attempt))
-			// Re-arm the disconnect watcher for the next drop. The
-			// status and gcode listeners are NOT re-issued — their
-			// channels survive reconnect (see Client doc comment),
-			// the goroutines blocked on them simply resume reading
-			// once the new readLoop starts pushing data.
-			return m, m.listenDisconnect()
+			// Klippy state is unknown until initialize asks again.
+			m.klippy = klippyStatus{}
+			m.klippyChanged()
+			// Re-arm the disconnect watcher for the next drop, and
+			// re-run initialize: the old connection's subscription
+			// died with it. The notification listener is NOT
+			// re-issued — its channel survives reconnect (see Client
+			// doc comment) and the goroutine blocked on it simply
+			// resumes once the new readLoop pushes data.
+			return m, tea.Batch(m.listenDisconnect(), m.initialize())
 		}
 		next := msg.attempt + 1
 		if next > reconnectFailedThreshold {
@@ -1162,10 +1222,19 @@ func (m *model) handleConsoleKey(msg tea.KeyMsg) tea.Cmd {
 func (m *model) appendLog(line string) {
 	// Some gcode responses come as multi-line blobs; split so the viewport
 	// wraps each line cleanly.
-	for _, l := range strings.Split(line, "\n") {
-		m.logLines = append(m.logLines, l)
+	m.logLines = append(m.logLines, strings.Split(line, "\n")...)
+	m.refreshConsole()
+}
+
+// refreshConsole re-renders the viewport from logLines, styling each
+// line by kind (errors red, echoes muted, ...). logLines stay unstyled
+// so classification never has to see through ANSI codes.
+func (m *model) refreshConsole() {
+	styled := make([]string, len(m.logLines))
+	for i, l := range m.logLines {
+		styled[i] = styleConsoleLine(l)
 	}
-	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+	m.viewport.SetContent(strings.Join(styled, "\n"))
 	m.viewport.GotoBottom()
 }
 
@@ -1207,7 +1276,11 @@ func (m *model) buildTable() {
 // math lives in computeLayout (layout.go); this is the imperative
 // "tell each widget how big it is" step.
 func (m *model) resizeLayout() {
-	m.layout = computeLayout(m.width, m.height, len(m.sensorNames))
+	reserved := 0
+	if m.klippy.bannerVisible() {
+		reserved = 1
+	}
+	m.layout = computeLayout(m.width, m.height, len(m.sensorNames), reserved)
 	if m.layout.mode == layoutMinimal {
 		return
 	}
@@ -1243,8 +1316,7 @@ func (m *model) resizeLayout() {
 
 	m.viewport.Width = m.layout.consoleBoxW - panelInnerXReserve()
 	m.viewport.Height = m.layout.consoleViewportH
-	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
-	m.viewport.GotoBottom()
+	m.refreshConsole()
 	m.input.Width = m.layout.inputW
 
 	m.files.SetSize(m.layout.filesContentW, m.layout.filesContentH)
@@ -1305,7 +1377,7 @@ func (m model) View() string {
 			footerStyle.Render("  Press ctrl+c to quit.\n")
 	}
 	if !m.ready {
-		return "\n  Connecting…\n"
+		return m.renderNotReady()
 	}
 	if m.layout.mode == layoutMinimal {
 		return renderMinimal(m.width, m.height)
@@ -1364,9 +1436,13 @@ func (m model) View() string {
 	}
 	footer := renderFooter(m.focus, m.job, barView, m.renderConnView())
 
-	out := title + "\n" + body + "\n"
+	out := title + "\n"
+	if m.klippy.bannerVisible() {
+		out += renderKlippyBanner(m.klippy, m.width) + "\n"
+	}
+	out += body + "\n"
 	if m.confirmation != nil {
-		out += renderConfirmation(m.confirmation.prompt) + "\n"
+		out += renderConfirmation(m.confirmation.prompt, m.confirmation.danger) + "\n"
 	}
 	out += footer + "\n"
 	return out

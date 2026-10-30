@@ -25,8 +25,15 @@ edges. Single-printer, single-host, no auth, no persistence.
 - **Job control** — pause / resume / cancel with print state in the
   footer, a live progress bar + ETA during prints.
 - **Reconnection** — automatic websocket reconnect with exponential
-  backoff if the printer reboots or the network blips; subscriptions
-  replay automatically.
+  backoff if the printer reboots or the network blips; everything
+  resubscribes automatically.
+- **Klipper lifecycle** — a banner whenever Klipper is starting, shut
+  down, in error or disconnected (with its reason), restart and
+  firmware restart keys, automatic resubscribe after `RESTART` /
+  `FIRMWARE_RESTART`, and an emergency stop reachable from any pane.
+- **Console extras** — Klipper `!!` errors in red, `//` echoes muted,
+  and the last 100 lines of console history pulled from Moonraker on
+  startup.
 
 ## What's missing
 
@@ -64,6 +71,9 @@ Global:
 | `p`      | Pause active print                                      |
 | `r`      | Resume paused print                                     |
 | `c`      | Cancel active print (confirms)                          |
+| `Ctrl+X` | Emergency stop (confirms; works from every pane)        |
+| `K`      | Restart Klipper (confirms; not in console)              |
+| `F`      | Firmware restart (confirms; not in console)             |
 | `y`/`n`  | Answer a confirmation prompt                            |
 
 Per pane, when focused:
@@ -81,17 +91,28 @@ Per pane, when focused:
 cmd/tui/                Bubbletea app
   main.go               model, Update, View, send Cmds
   layout.go             pane dimensions, panel helper, footer
+  klippy.go             notification dispatch table, Klipper state,
+                        e-stop / restarts, banner, console styling
   theme.go              colors and styles
 internal/moonraker/     JSON-RPC over websocket client
   client.go             connection lifecycle, read loop, reconnect
-  api.go                typed RPC methods + Subscribe map memory
+  api.go                typed RPC methods
+  notify.go             notification method names + parsers
+  moonrakertest/        fake Moonraker server for tests
 cmd/moonraker-test/     ad-hoc client smoke test
+docs/ROADMAP.md         Mainsail gap audit and phase plan
 ```
 
-The client owns the websocket and replays the last `Subscribe` call
-across reconnects so consumers don't need to. The TUI model holds one
-`layout` value computed on every `WindowSizeMsg`; all panes render
-through a shared `renderPanel` helper.
+The client owns the websocket and forwards every server notification
+on one channel; the TUI routes them through a dispatch table in
+`klippy.go`. Subscribing happens on one path, `initialize`, which runs
+at startup, after a websocket reconnect, and on `notify_klippy_ready`:
+it identifies the connection, checks Klipper's state with
+`server.info`, and only then lists objects and sends one complete
+subscribe map. The TUI model holds one `layout` value computed on every
+`WindowSizeMsg`; all panes render through a shared `renderPanel` helper.
+
+Run the tests with `go test ./...`.
 
 ## License
 

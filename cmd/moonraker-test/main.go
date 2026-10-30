@@ -79,11 +79,19 @@ func main() {
 
 	for {
 		select {
-		case update := <-client.Updates():
-			printStatusUpdate("UPDATE", &update)
-
-		case resp := <-client.GcodeResponses():
-			fmt.Printf("[GCODE] %s\n", resp)
+		case n := <-client.Notifications():
+			switch n.Method {
+			case moonraker.MethodStatusUpdate:
+				if update, err := moonraker.ParseStatusUpdate(n.Params); err == nil {
+					printStatusUpdate("UPDATE", &update)
+				}
+			case moonraker.MethodGcodeResponse:
+				if resp, err := moonraker.ParseGcodeResponse(n.Params); err == nil {
+					fmt.Printf("[GCODE] %s\n", resp)
+				}
+			default:
+				fmt.Printf("[NOTIFY] %s\n", n.Method)
+			}
 
 		case s := <-sig:
 			fmt.Printf("\n→ Caught %v, shutting down …\n", s)

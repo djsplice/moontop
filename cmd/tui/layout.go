@@ -81,7 +81,10 @@ type layout struct {
 // sensorCount is the number of rows the temp table wants to show — used
 // to hug the top-row height to actual content when there's room, and
 // to compute the inner table height.
-func computeLayout(termW, termH, sensorCount int) layout {
+//
+// reservedRows is extra vertical chrome outside the panes (currently the
+// Klippy banner); it shrinks the space handed to the panes.
+func computeLayout(termW, termH, sensorCount, reservedRows int) layout {
 	if termW < minTermW || termH < minTermH {
 		return layout{mode: layoutMinimal}
 	}
@@ -96,7 +99,7 @@ func computeLayout(termW, termH, sensorCount int) layout {
 	)
 
 	availW := termW - marginL - gutterR
-	availH := termH - chromeV
+	availH := termH - chromeV - reservedRows
 	if availW < 1 {
 		availW = 1
 	}
@@ -138,8 +141,8 @@ func computeWide(availW, availH, sensorCount int) layout {
 
 	// Outer top-row height = max(pane inner needs) + borders.
 	tableInner := 2 + sensorCount
-	jogInner := 1 + jogContentMin   // title + jog body
-	filesInner := 1 + 8             // title + ~8 rows minimum
+	jogInner := 1 + jogContentMin    // title + jog body
+	filesInner := 1 + 8              // title + ~8 rows minimum
 	tuningInner := 1 + tuningRowsMin // title + label/input rows + error line
 	innerH := tableInner
 	for _, h := range []int{jogInner, filesInner, tuningInner} {
@@ -314,7 +317,7 @@ func renderFooter(f focusArea, job printJob, barView, connView string) string {
 	mid := footerStyle.Render("  " + paneKeys)
 	jobText := renderJobSummary(job, barView)
 	jobKeys := footerStyle.Render(jobControlHints(job))
-	right := footerStyle.Render("  •  tab: next pane  •  ctrl+c: quit")
+	right := footerStyle.Render("  •  ctrl+x: e-stop  •  tab: next pane  •  ctrl+c: quit")
 	return lipgloss.NewStyle().MarginLeft(2).Render(conn + left + mid + jobText + jobKeys + right)
 }
 
@@ -351,8 +354,14 @@ func jobControlHints(job printJob) string {
 // body and the footer. Single source of truth for confirmation UI —
 // every action that arms m.confirmation shows up here, no per-pane
 // rendering.
-func renderConfirmation(prompt string) string {
+//
+// danger renders the prompt as a red block — used for E-stop and for
+// restarts while a print is active.
+func renderConfirmation(prompt string, danger bool) string {
 	q := footerFocusStyle.Foreground(colorAccentWarm).Render("? " + prompt)
+	if danger {
+		q = dangerPromptStyle.Render("! " + prompt)
+	}
 	hint := footerStyle.Render("   y to confirm   •   n / esc to cancel")
 	return lipgloss.NewStyle().MarginLeft(2).Render(q + hint)
 }

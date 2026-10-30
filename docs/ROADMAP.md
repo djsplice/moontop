@@ -123,8 +123,8 @@ Every phase keeps the existing rules: listener Cmds reissue themselves, sends ar
 
 **Decisions needed before Phase 13:**
 
-- [ ] Pull Phase 14 ahead of AFC as a hotfix? The resubscribe-on-ready gap is a correctness bug and E-stop is a safety item. My recommendation is yes, keeping AFC's number.
-- [ ] E-stop binding: a single chord with no confirmation (fast, risk of accidental press) or a key plus `y`? Mainsail makes the confirm optional.
+- [x] Pull Phase 14 ahead of AFC as a hotfix? The resubscribe-on-ready gap is a correctness bug and E-stop is a safety item. My recommendation is yes, keeping AFC's number. **Decided: yes — Phase 14 shipped first.**
+- [x] E-stop binding: a single chord with no confirmation (fast, risk of accidental press) or a key plus `y`? Mainsail makes the confirm optional. **Decided: key plus `y` (`ctrl+x`, then `y`).**
 - [ ] Presets: reuse the presets Mainsail already stores in Moonraker's database, or keep Moontop's own?
 - [ ] Multiple screens from Phase 21: acceptable, or keep everything on one dashboard?
 - [ ] Run the discovery dump above and commit the fixtures.

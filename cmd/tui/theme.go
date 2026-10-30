@@ -64,4 +64,24 @@ var (
 	jogHintStyle = lipgloss.NewStyle().Foreground(colorTextMuted)
 
 	errStyle = lipgloss.NewStyle().Foreground(colorErr).Bold(true)
+
+	// Console line styles (see classifyLine in klippy.go).
+	consoleErrStyle    = lipgloss.NewStyle().Foreground(colorErr)
+	consoleInfoStyle   = lipgloss.NewStyle().Foreground(colorTextMuted)
+	consoleCmdStyle    = lipgloss.NewStyle().Foreground(colorAccentWarm)
+	consoleNoticeStyle = lipgloss.NewStyle().Foreground(colorOk)
+
+	// Klippy-not-ready banner and danger confirmations (E-stop,
+	// restart mid-print).
+	bannerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("231")).
+			Background(colorErr).
+			Bold(true).
+			Padding(0, 1).
+			MarginLeft(2)
+	dangerPromptStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("231")).
+				Background(colorErr).
+				Bold(true).
+				Padding(0, 1)
 )
