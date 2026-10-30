@@ -304,3 +304,17 @@ func (c *Client) GcodeStore(count int) ([]GcodeStoreEntry, error) {
 	}
 	return body.Store, nil
 }
+
+// GcodeHelp wraps printer.gcode.help: every registered command
+// (built-ins, extended commands and macros) mapped to its help text.
+func (c *Client) GcodeHelp() (map[string]string, error) {
+	result, err := c.call("printer.gcode.help", nil)
+	if err != nil {
+		return nil, err
+	}
+	var help map[string]string
+	if err := json.Unmarshal(result, &help); err != nil {
+		return nil, err
+	}
+	return help, nil
+}

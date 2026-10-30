@@ -74,6 +74,9 @@ var (
 	consoleCmdStyle    = lipgloss.NewStyle().Foreground(colorAccentWarm)
 	consoleNoticeStyle = lipgloss.NewStyle().Foreground(colorOk)
 
+	// Line console (`moontop console`) prompt.
+	replPromptStyle = lipgloss.NewStyle().Foreground(colorBorderFocused).Bold(true)
+
 	// Klippy-not-ready banner and danger confirmations (E-stop,
 	// restart mid-print).
 	bannerStyle = lipgloss.NewStyle().

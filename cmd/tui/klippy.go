@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
 
@@ -53,14 +54,7 @@ var notificationHandlers = map[string]notificationHandler{
 // handleNotification. The channel survives reconnect, so this listener
 // is never re-issued from the reconnect path — it's already waiting.
 func (m model) listenNotifications() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		n, ok := <-client.Notifications()
-		if !ok {
-			return errMsg{fmt.Errorf("notification channel closed")}
-		}
-		return notificationMsg(n)
-	}
+	return listenNotificationsCmd(m.client)
 }
 
 // handleNotification dispatches through the table and always re-arms
@@ -182,14 +176,7 @@ func (m *model) klippyChanged() {
 
 // fetchPrinterInfo asks printer.info for Klippy's state message.
 func (m model) fetchPrinterInfo() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		info, err := client.GetPrinterInfo()
-		if err != nil {
-			return klippyStateMsg{err: err}
-		}
-		return klippyStateMsg{state: info.State, message: info.StateMessage}
-	}
+	return fetchPrinterInfoCmd(m.client)
 }
 
 // ---------------------------------------------------------------------------
@@ -204,18 +191,15 @@ type klippyActionMsg struct {
 }
 
 func (m model) emergencyStop() tea.Cmd {
-	client := m.client
-	return func() tea.Msg { return klippyActionMsg{"emergency stop", client.EmergencyStop()} }
+	return emergencyStopCmd(m.client)
 }
 
 func (m model) restartKlipper() tea.Cmd {
-	client := m.client
-	return func() tea.Msg { return klippyActionMsg{"restart", client.RestartKlipper()} }
+	return restartKlipperCmd(m.client)
 }
 
 func (m model) firmwareRestart() tea.Cmd {
-	client := m.client
-	return func() tea.Msg { return klippyActionMsg{"firmware restart", client.FirmwareRestart()} }
+	return firmwareRestartCmd(m.client)
 }
 
 // armEmergencyStop replaces any pending confirmation: E-stop must never
@@ -261,67 +245,24 @@ type gcodeStoreMsg struct {
 }
 
 func (m model) loadGcodeStore() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		entries, err := client.GcodeStore(gcodeStoreBackfill)
-		return gcodeStoreMsg{entries: entries, err: err}
-	}
-}
-
-// backfillLines converts gcode_store entries to console lines, using the
-// same ">>> " prefix as commands typed here.
-func backfillLines(entries []moonraker.GcodeStoreEntry) []string {
-	var lines []string
-	for _, e := range entries {
-		msg := e.Message
-		if e.Type == "command" {
-			msg = ">>> " + msg
-		}
-		lines = append(lines, strings.Split(msg, "\n")...)
-	}
-	return lines
+	return loadGcodeStoreCmd(m.client)
 }
 
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 
-// consoleLineKind classifies a console line for styling. Klipper marks
-// errors with "!!" and informational echoes with "//"; Moontop uses
-// ">>> " for sent commands and "** " for its own notices.
-type consoleLineKind int
-
-const (
-	lineNormal consoleLineKind = iota
-	lineError
-	lineInfo
-	lineCommand
-	lineNotice
-)
-
-func classifyLine(l string) consoleLineKind {
-	switch {
-	case strings.HasPrefix(l, "!!"):
-		return lineError
-	case strings.HasPrefix(l, "//"):
-		return lineInfo
-	case strings.HasPrefix(l, ">>> "):
-		return lineCommand
-	case strings.HasPrefix(l, "** "):
-		return lineNotice
-	}
-	return lineNormal
-}
-
+// styleConsoleLine maps the shared line classification to the
+// dashboard's console styles.
 func styleConsoleLine(l string) string {
-	switch classifyLine(l) {
-	case lineError:
+	switch console.ClassifyLine(l) {
+	case console.KindError:
 		return consoleErrStyle.Render(l)
-	case lineInfo:
+	case console.KindInfo:
 		return consoleInfoStyle.Render(l)
-	case lineCommand:
+	case console.KindCommand:
 		return consoleCmdStyle.Render(l)
-	case lineNotice:
+	case console.KindNotice:
 		return consoleNoticeStyle.Render(l)
 	}
 	return l

@@ -31,6 +31,8 @@ edges. Single-printer, single-host, no auth, no persistence.
   down, in error or disconnected (with its reason), restart and
   firmware restart keys, automatic resubscribe after `RESTART` /
   `FIRMWARE_RESTART`, and an emergency stop reachable from any pane.
+- **Line console and one-shot gcode** — see `moontop console` and
+  `moontop gcode` below.
 - **Console extras** — Klipper `!!` errors in red, `//` echoes muted,
   and the last 100 lines of console history pulled from Moonraker on
   startup.
@@ -51,13 +53,66 @@ edges. Single-printer, single-host, no auth, no persistence.
 Requires Go 1.26+ and a reachable Moonraker instance.
 
 ```sh
-go run ./cmd/tui -host 192.168.1.100:7125
+go build -o moontop ./cmd/tui
+./moontop -host 192.168.1.100:7125
 # or
-MOONRAKER_HOST=192.168.1.100:7125 go run ./cmd/tui
+export MOONRAKER_HOST=192.168.1.100:7125
+./moontop
 ```
 
 `host` is the Moonraker websocket endpoint, typically port 7125. The
 `ws://<host>/websocket` URL is constructed automatically.
+
+Moontop has three modes:
+
+| Command | What it is |
+| ------- | ---------- |
+| `moontop` | Full-screen dashboard (everything below). |
+| `moontop console` | Interactive gcode console in your normal terminal. |
+| `moontop gcode CMD…` | Run gcode, print Klipper's output, exit. |
+
+### `moontop console`
+
+A gcode prompt that stays at the bottom of your terminal while Klipper's
+output scrolls above it as ordinary terminal text, so your terminal's
+own scrollback, search and copy all work. It works from any machine
+that can reach Moonraker — no SSH, no `/tmp/printer` (`klippy.serial`).
+
+- Shows the last 100 console lines on connect, then streams live output.
+- `Tab` completes commands and macros (from `printer.gcode.help`);
+  `ctrl+n` / `ctrl+p` cycle candidates.
+- `↑` / `↓` history, saved across sessions in
+  `$XDG_STATE_HOME/moontop/console_history`
+  (`~/.local/state/…` by default; `-no-history` to skip).
+- The status line shows the connection, Klipper's state, and the
+  command currently running (`running G28`).
+- `ctrl+x` then `y`: emergency stop. `ctrl+c` clears the line, or quits
+  on an empty one; `ctrl+d` or `exit` quits.
+- Reconnects and follows Klipper restarts like the dashboard.
+
+### `moontop gcode`
+
+```sh
+moontop gcode M115                       # print firmware info
+moontop gcode G28 "G1 Z10 F600"          # one command per argument
+moontop gcode -echo < calibrate.gcode    # one command per line from stdin
+```
+
+Each command runs to completion before the next: Moonraker replies to
+`printer.gcode.script` only after Klipper finishes (`G28` after homing,
+`M190` once the bed is at temperature), and Klipper's output for it is
+printed as it streams. Klipper errors go to stderr and stop the run
+(`-k` keeps going). Exit status is 0 when everything succeeded, 1 when a
+command failed, 2 for usage or connection errors — so it works in shell
+scripts and cron. Output is coloured only when stdout is a terminal.
+
+On stdin, blank lines and whole-line `;` comments are skipped. Sending
+a file this way runs it line by line; it isn't a substitute for
+starting a print (use the dashboard's Files pane).
+
+Output from other clients (Mainsail, a running print) that arrives
+while a command runs is printed too, since Moonraker broadcasts console
+output to every connection.
 
 ## Keybindings
 
@@ -88,12 +143,17 @@ Per pane, when focused:
 ## Project layout
 
 ```
-cmd/tui/                Bubbletea app
-  main.go               model, Update, View, send Cmds
+cmd/tui/                the moontop binary
+  cli.go                subcommand dispatch, `moontop gcode`
+  repl.go               `moontop console` (inline Bubbletea program)
+  cmds.go               client Cmds shared by dashboard and console
+  main.go               dashboard model, Update, View
   layout.go             pane dimensions, panel helper, footer
   klippy.go             notification dispatch table, Klipper state,
                         e-stop / restarts, banner, console styling
   theme.go              colors and styles
+internal/console/       shared by all three modes: line classification,
+                        history, backfill, one-shot gcode runner
 internal/moonraker/     JSON-RPC over websocket client
   client.go             connection lifecycle, read loop, reconnect
   api.go                typed RPC methods

@@ -1,13 +1,15 @@
-// Command tui is the Moonraker terminal UI.
+// Command tui is Moontop, a terminal UI for Moonraker / Klipper.
 //
 // Usage:
 //
-//	go run ./cmd/tui -host <ip:port>
-//	MOONRAKER_HOST=<ip:port> go run ./cmd/tui
+//	moontop  [-host ip:port]                 full-screen dashboard
+//	moontop console [-host ip:port]          line-based gcode console
+//	moontop gcode [-host ip:port] [cmd ...]  run gcode and exit
+//
+// -host defaults to $MOONRAKER_HOST. Build with: go build -o moontop ./cmd/tui
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -25,6 +27,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
 
@@ -376,11 +379,7 @@ func (m model) Init() tea.Cmd {
 // survives reconnects (it's created once in New), so the next drop
 // re-arms naturally.
 func (m model) listenDisconnect() tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		err := <-client.Disconnected()
-		return disconnectedMsg{err: err}
-	}
+	return listenDisconnectCmd(m.client)
 }
 
 // attemptReconnect schedules one Reconnect attempt after `delay`. The
@@ -389,11 +388,7 @@ func (m model) listenDisconnect() tea.Cmd {
 // is no permanent give-up state, only a visible "failed" banner once
 // reconnectFailedThreshold is crossed.
 func (m model) attemptReconnect(attempt int, delay time.Duration) tea.Cmd {
-	client := m.client
-	return tea.Tick(delay, func(time.Time) tea.Msg {
-		err := client.Reconnect(context.Background())
-		return reconnectResultMsg{attempt: attempt, err: err}
-	})
+	return attemptReconnectCmd(m.client, attempt, delay)
 }
 
 // loadFiles fetches the gcode file list once at startup.
@@ -484,28 +479,12 @@ func (m *model) requireConnected(what string, cmd tea.Cmd) tea.Cmd {
 func (m model) initialize() tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
-		// Identify failure (e.g. an old Moonraker) isn't worth
-		// blocking on; the connection works without it.
-		_ = client.Identify(clientName, clientVersion, "other", clientURL)
-
-		info, err := client.GetServerInfo()
-		if err != nil {
-			return initMsg{err: fmt.Errorf("server info: %w", err)}
+		ks := identifyAndCheckKlippy(client)
+		if ks.err != nil {
+			return initMsg{err: ks.err}
 		}
-		if !info.KlippyConnected || info.KlippyState != "ready" {
-			state := info.KlippyState
-			if !info.KlippyConnected {
-				state = "disconnected"
-			}
-			msg := klippyStateMsg{state: state}
-			// printer.info carries the reason (config error text,
-			// shutdown cause) whenever Klippy is connected at all.
-			if info.KlippyConnected {
-				if pi, err := client.GetPrinterInfo(); err == nil {
-					msg.message = pi.StateMessage
-				}
-			}
-			return msg
+		if ks.state != "ready" {
+			return ks
 		}
 
 		objects, err := client.ListObjects()
@@ -560,10 +539,7 @@ func (m model) initialize() tea.Cmd {
 // sendGcode wraps a Client.GcodeScript call as a Cmd so the Update loop
 // doesn't block on the round-trip.
 func (m model) sendGcode(cmd string) tea.Cmd {
-	client := m.client
-	return func() tea.Msg {
-		return gcodeSentMsg{cmd: cmd, err: client.GcodeScript(cmd)}
-	}
+	return sendGcodeCmd(m.client, cmd)
 }
 
 // ---------------------------------------------------------------------------
@@ -792,7 +768,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Prepend: live lines may already have arrived while the
 		// request was in flight.
-		lines := backfillLines(msg.entries)
+		lines := console.BackfillLines(msg.entries)
 		if len(lines) > 0 {
 			lines = append(lines, "** ── live ──")
 			m.logLines = append(lines, m.logLines...)
@@ -1569,28 +1545,29 @@ func sortedKeys(m map[string]*sensorState) []string {
 // main
 // ---------------------------------------------------------------------------
 
-func main() {
-	host := flag.String("host", "", "Moonraker host:port (e.g. 192.168.1.100:7125)")
-	flag.Parse()
-
-	if *host == "" {
-		*host = os.Getenv("MOONRAKER_HOST")
+// runDashboard starts the full-screen dashboard (the default mode).
+func runDashboard(args []string) int {
+	fs := flag.NewFlagSet("moontop", flag.ContinueOnError)
+	host := hostFlag(fs)
+	fs.Usage = usage
+	if err := fs.Parse(args); err != nil {
+		return 2
 	}
-	if *host == "" {
-		fmt.Fprintln(os.Stderr, "Usage: tui -host <ip:port>")
-		fmt.Fprintln(os.Stderr, "   or: MOONRAKER_HOST=<ip:port> tui")
-		os.Exit(1)
+	h, ok := resolveHost(*host)
+	if !ok {
+		return 2
 	}
 
-	client, err := moonraker.New(*host)
+	client, err := moonraker.New(h)
 	if err != nil {
-		log.Fatalf("Failed to connect to Moonraker: %v", err)
+		fmt.Fprintf(os.Stderr, "moontop: connect to %s: %v\n", h, err)
+		return 2
 	}
 
-	m := initialModel(client)
-
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(client), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		log.Fatalf("TUI error: %v", err)
+		log.Printf("TUI error: %v", err)
+		return 1
 	}
+	return 0
 }

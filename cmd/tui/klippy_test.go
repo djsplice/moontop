@@ -404,22 +404,6 @@ func TestGcodeStoreBackfillPrependsBeforeLiveLines(t *testing.T) {
 	}
 }
 
-func TestClassifyLine(t *testing.T) {
-	cases := map[string]consoleLineKind{
-		"!! Move out of range: 0 0 -5": lineError,
-		"// Klipper state: Ready":      lineInfo,
-		">>> G28":                      lineCommand,
-		"** reconnected (attempt 1)":   lineNotice,
-		"ok":                           lineNormal,
-		"B:60.0 /60.0 T0:210.0 /210.0": lineNormal,
-	}
-	for in, want := range cases {
-		if got := classifyLine(in); got != want {
-			t.Errorf("classifyLine(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
 func TestComputeLayoutReservedRows(t *testing.T) {
 	a := computeLayout(160, 50, 4, 0)
 	b := computeLayout(160, 50, 4, 1)
