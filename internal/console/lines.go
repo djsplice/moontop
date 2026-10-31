@@ -7,6 +7,7 @@
 package console
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
@@ -55,18 +56,36 @@ func ClassifyLine(l string) Kind {
 
 // BackfillLines converts server.gcode_store entries to console lines,
 // marking commands with PrefixCommand so they render like ones typed
-// here. Multi-line messages are split.
+// here. Multi-line messages are split; in a multi-line command (a
+// script, such as Moontop's own jogs) every line is marked, and the
+// SAVE/RESTORE_GCODE_STATE wrapper Moontop puts around its moves is
+// left out — it's plumbing, not something anyone typed.
 func BackfillLines(entries []moonraker.GcodeStoreEntry) []string {
 	var lines []string
 	for _, e := range entries {
-		msg := e.Message
-		if e.Type == "command" {
-			msg = PrefixCommand + msg
+		if e.Type != "command" {
+			lines = append(lines, strings.Split(e.Message, "\n")...)
+			continue
 		}
-		lines = append(lines, strings.Split(msg, "\n")...)
+		var cmds []string
+		for _, l := range strings.Split(e.Message, "\n") {
+			if l = strings.TrimSpace(l); l != "" && !moontopWrapper.MatchString(l) {
+				cmds = append(cmds, l)
+			}
+		}
+		// A jog is three lines once unwrapped (G91, G1 …); keep it on one.
+		if len(cmds) > 1 && len(cmds) <= 3 && len(cmds) < len(strings.Split(e.Message, "\n")) {
+			cmds = []string{strings.Join(cmds, " · ")}
+		}
+		for _, c := range cmds {
+			lines = append(lines, PrefixCommand+c)
+		}
 	}
 	return lines
 }
+
+// moontopWrapper matches the state save/restore around Moontop's moves.
+var moontopWrapper = regexp.MustCompile(`^(SAVE|RESTORE)_GCODE_STATE NAME=_ui_\w+$`)
 
 // ErrorLine renders an RPC error the way Klipper renders its own:
 // "!! <message>". Moonraker passes Klipper's gcode errors through as

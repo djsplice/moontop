@@ -34,8 +34,13 @@ func TestBackfillLines(t *testing.T) {
 	got := console.BackfillLines([]moonraker.GcodeStoreEntry{
 		{Message: "G28", Type: "command"},
 		{Message: "// line one\n// line two", Type: "response"},
+		// A Moontop jog, as Moonraker stores it (seen on a Qidi Q2).
+		{Message: "SAVE_GCODE_STATE NAME=_ui_movement\nG91\nG1 Z-10 F600\nRESTORE_GCODE_STATE NAME=_ui_movement", Type: "command"},
+		// Someone else's multi-line script keeps every line, each marked.
+		{Message: "G28\nG1 X10\nG1 Y10\nM400", Type: "command"},
 	})
-	want := []string{">>> G28", "// line one", "// line two"}
+	want := []string{">>> G28", "// line one", "// line two", ">>> G91 · G1 Z-10 F600",
+		">>> G28", ">>> G1 X10", ">>> G1 Y10", ">>> M400"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("got %q", got)
 	}
