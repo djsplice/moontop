@@ -1620,7 +1620,7 @@ func (m model) View() string {
 
 	out := title + "\n"
 	if m.klippy.bannerVisible() {
-		out += renderKlippyBanner(m.klippy, m.width) + "\n"
+		out += renderKlippyBanner(m.klippy, m.width, m.restartLettersWork()) + "\n"
 	}
 	out += body + "\n"
 	switch {

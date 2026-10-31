@@ -279,13 +279,20 @@ func styleConsoleLine(l string) string {
 // title and the panes while Klippy isn't ready. The full (often
 // multi-line) message is in the console; the banner shows its first
 // line, truncated to the terminal width.
-func renderKlippyBanner(k klippyStatus, width int) string {
+//
+// lettersWork says whether K and F reach the restart actions; while the
+// console (or a file filter) is taking text they're just letters, so
+// the banner offers only F5 / F6, which work everywhere.
+func renderKlippyBanner(k klippyStatus, width int, lettersWork bool) string {
 	label := "Klipper " + k.State
 	msg := k.Message
 	if i := strings.IndexByte(msg, '\n'); i >= 0 {
 		msg = msg[:i]
 	}
-	keys := "  K: restart  •  F: firmware restart  •  ctrl+x: e-stop"
+	keys := "  F5: restart  •  F6: firmware restart  •  ctrl+x: e-stop"
+	if lettersWork {
+		keys = "  K/F5: restart  •  F/F6: firmware restart  •  ctrl+x: e-stop"
+	}
 	text := "⚠ " + label
 	if msg != "" {
 		text += ": " + msg
@@ -295,6 +302,12 @@ func renderKlippyBanner(k klippyStatus, width int) string {
 		text = truncateRunes(text, avail-1) + "…"
 	}
 	return bannerStyle.Render(text) + footerStyle.UnsetMarginLeft().Render(keys)
+}
+
+// restartLettersWork reports whether K / F act as restart keys right
+// now (false while the focused pane takes them as text).
+func (m *model) restartLettersWork() bool {
+	return !m.capturesText(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("K")}) && !m.paneClaims(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("K")})
 }
 
 func truncateRunes(s string, n int) string {
@@ -316,7 +329,7 @@ func (m model) renderNotReady() string {
 	b.WriteString(appTitleStyle.Render(appTitle) + "\n\n")
 	switch {
 	case m.klippy.bannerVisible():
-		b.WriteString(renderKlippyBanner(m.klippy, m.width) + "\n")
+		b.WriteString(renderKlippyBanner(m.klippy, m.width, m.restartLettersWork()) + "\n")
 		if m.klippy.Message != "" {
 			for _, l := range strings.Split(m.klippy.Message, "\n") {
 				b.WriteString(footerStyle.Render(l) + "\n")

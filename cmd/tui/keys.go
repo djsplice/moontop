@@ -124,8 +124,10 @@ var keys = struct {
 	Resume: bind([]string{"r"}, "r", "resume print"),
 	Cancel: bind([]string{"c"}, "c", "cancel print (confirms)"),
 
-	Restart:   bind([]string{"K"}, "K", "restart Klipper (confirms)"),
-	FwRestart: bind([]string{"F"}, "F", "firmware restart (confirms)"),
+	// F5 / F6 work from every pane, including while the console takes
+	// text (where K and F are just letters).
+	Restart:   bind([]string{"f5", "K"}, "F5/K", "restart Klipper (confirms)"),
+	FwRestart: bind([]string{"f6", "F"}, "F6/F", "firmware restart (confirms)"),
 
 	Confirm:    bind([]string{"y", "Y"}, "y", "confirm a prompt"),
 	Deny:       bind([]string{"n", "N", "esc"}, "n/esc", "cancel a prompt"),
@@ -364,7 +366,9 @@ func isTextKey(msg tea.KeyMsg) bool {
 
 // capturesText reports whether msg is text for the focused widget.
 func (m *model) capturesText(msg tea.KeyMsg) bool {
-	if !isTextKey(msg) {
+	// Before the first subscribe only the not-ready screen is drawn;
+	// no pane is visible to take text.
+	if !isTextKey(msg) || !m.ready {
 		return false
 	}
 	switch m.focus {

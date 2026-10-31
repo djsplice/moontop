@@ -133,7 +133,7 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | `Ctrl+X` | Emergency stop (confirms; works everywhere) |
 | `q` / `F10` / `Ctrl+C` | Quit |
 | `p` / `r` / `c` | Pause / resume / cancel the print (cancel confirms) |
-| `K` / `F` | Restart Klipper / firmware restart (confirm) |
+| `F5` / `F6` (or `K` / `F` outside the console) | Restart Klipper / firmware restart (confirm). F5 and F6 work from every pane, including while the console has focus |
 | `Ctrl+O` | Show or hide filtered console lines |
 | `y` / `n` / `Esc` | Answer a confirmation prompt |
 

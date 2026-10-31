@@ -157,7 +157,7 @@ func TestInitializeStopsAtKlippyNotReady(t *testing.T) {
 		t.Fatal("should not be ready")
 	}
 	view := m.View()
-	for _, want := range []string{"Klipper error", "Section 'foo'", "K: restart", "F: firmware restart"} {
+	for _, want := range []string{"Klipper error", "Section 'foo'", "K/F5: restart", "F/F6: firmware restart"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("not-ready view missing %q", want)
 		}
@@ -334,8 +334,26 @@ func TestRestartKeysAreConfirmGatedAndNotHijackedInConsole(t *testing.T) {
 		t.Fatalf("console input = %q", m.input.Value())
 	}
 
+	// From the console, F5 / F6 still work, and the banner offers only
+	// those (reported after an E-stop with the console focused).
+	m.klippy = klippyStatus{State: "shutdown", Message: "Shutdown due to M112 command"}
+	view := m.View()
+	if !strings.Contains(view, "F5: restart") || strings.Contains(view, "K/F5") {
+		t.Fatalf("console-focused banner should offer only F5/F6:\n%s", view)
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyF6})
+	if m.confirmation == nil || !strings.Contains(m.confirmation.prompt, "FIRMWARE_RESTART") {
+		t.Fatal("F6 in console did not arm a firmware restart")
+	}
+	m.confirmation = nil
+	m.input.SetValue("")
+	m.klippy = klippyStatus{State: "ready"}
+
 	m.focus = focusFiles
 	m.input.Blur()
+	if !strings.Contains(renderKlippyBanner(klippyStatus{State: "shutdown"}, 160, m.restartLettersWork()), "K/F5") {
+		t.Error("banner outside the console should offer K / F too")
+	}
 	for key, method := range map[string]string{"K": "printer.restart", "F": "printer.firmware_restart"} {
 		m = update(t, m, keyRunes(key))
 		if m.confirmation == nil {
