@@ -81,6 +81,9 @@ Forty gaps, sorted by priority. P0 blocks safe daily use, P1 is daily convenienc
 | Config files | Editor | No | Partial (view + `$EDITOR` handoff) | M | P3 | 25 |
 | Gcode command autocomplete | `printer.gcode.help` | No | Yes | S | P3 | 25 |
 | Endstop query, move-to, per-axis home, motors off | Toolhead / Machine | Home all only | Yes | S | P3 | 25 |
+| Live object browser: filter, expand, watch any object update, copy a `printer.<object>.<field>` path for macros (idea from SocketKeys, see below) | No (Fluidd neither) | `moontop dump` only | Yes | M | P2 | 26 |
+| Parameter hints for macros in console completion, parsed from `gcode_macro` Jinja (`params.X`), plus a bundled reference for Klipper's built-ins (SocketKeys) | No | Command names only | Yes | M | P3 | 26 |
+| Log tail with errors, warnings and tracebacks coloured; trigger a log rollover (SocketKeys) | LogfilesPanel (download) | No | Yes | S | P3 | 25 |
 | File upload | Drag-drop | No | Partial (local path) | M | P3 | Later |
 | Spoolman | SpoolmanPanel | No | Yes | M | P3 | Later |
 | Timelapse status and toggles | Timelapse panels | No | Partial | S | P3 | Later |
@@ -111,6 +114,7 @@ Thirteen phases, each one working artifact plus one architectural concept. P0 wo
 | 23 | Updates and announcements | **Long-running operations with streamed progress** (`notify_update_response` into a log view) | M |
 | 24 | Bed mesh: profiles, calibrate, ASCII heat grid; screws tilt and manual probe | **Rendering a 2D numeric field** in a terminal | M |
 | 25 | Logs, config viewer with `$EDITOR` handoff, gcode autocomplete, endstops, move-to | **Suspending the TUI** for an external process (`tea.ExecProcess`) | M |
+| 26 | Debug tools: an object browser pane over every Klipper object (live, filterable, copy the Jinja path) and macro parameter hints in the console. Suggested by jimmyjon711 (AFC) pointing at [SocketKeys](https://github.com/N3MI-DG/SocketKeys), a Tauri debugging client for Moonraker | **A generic tree view over the raw object store** that AFC already uses; subscribing to everything on demand and unsubscribing when the pane closes | M |
 
 Phases 13 and 15–17 depend on U1 object names. Before Phase 13, run this from a machine on your LAN and save the output into the repo as test fixtures:
 
@@ -119,7 +123,7 @@ curl -s http://10.0.3.207:7125/printer/objects/list > testdata/objects.json
 curl -s "http://10.0.3.207:7125/printer/objects/query?AFC&toolhead&print_stats" > testdata/afc_query.json
 ```
 
-**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets) and UI-3 (layout solver: pane order, width shares, console height; Temperatures and Files columns, including heater Power). Still open from the UI plan: the Display category (ASCII glyphs, compact borders) and editable keys. Phase 13 (AFC) is done: a pane beside the console, built from Fluidd's AFC model plus retrograde's AFC-Lite rules, and tested against a sanitized U1 AFC-Lite status (testdata/afc-lite-u1.json, from retrograde). Not yet exercised on real AFC hardware or with live load/unload on the U1. Toolhead rework (2026-10-31, Justin's idea): WASD jogs XY, space/c jump and crouch Z, arrows move a field cursor for typed absolute positions and custom steps; moves are refused while printing, on unhomed axes and outside axis limits; a pane key may now shadow a job key while focused (c in Toolhead). Next: Phase 16 (tool select, extrude/retract, speed and flow, Z offset).
+**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets) and UI-3 (layout solver: pane order, width shares, console height; Temperatures and Files columns, including heater Power). Still open from the UI plan: the Display category (ASCII glyphs, compact borders) and editable keys. Phase 13 (AFC) is done: a pane beside the console, built from Fluidd's AFC model plus retrograde's AFC-Lite rules, and tested against a sanitized U1 AFC-Lite status (testdata/afc-lite-u1.json, from retrograde). Not yet exercised on real AFC hardware or with live load/unload on the U1. AFC lanes now come only from `AFC.lanes` (jimmyjon711: a ViViD's drive and selector steppers are not lanes). Toolhead rework (2026-10-31, Justin's idea): WASD jogs XY, space/c jump and crouch Z, arrows move a field cursor for typed absolute positions and custom steps; moves are refused while printing, on unhomed axes and outside axis limits; a pane key may now shadow a job key while focused (c in Toolhead). Next: Phase 16 (tool select, extrude/retract, speed and flow, Z offset).
 
 UI-1 to UI-3 come before Phase 13 (AFC), decided 2026-10-31: AFC adds a pane and many per-lane objects that need the same show/hide and selection machinery.
 

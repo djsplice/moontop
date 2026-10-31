@@ -61,24 +61,24 @@ func TestFullAFC(t *testing.T) {
 		"AFC_BoxTurtle Turtle_1": {"lanes": []any{"lane1", "lane2"}},
 		"AFC_stepper lane1":      {"map": []any{"T0", "T4"}, "load": true, "prep": true, "weight": 850.0, "color": "FF8800", "status": "None"},
 		"AFC_stepper lane2":      {"map": "T1", "load": true, "prep": true, "status": "Tool Loading"},
-		"AFC_stepper lane9":      {"map": "T9", "prep": true}, // not listed anywhere
+		"AFC_stepper lane9":      {"map": "T9", "prep": true}, // not in AFC.lanes: not a lane
 	}
 	m := Parse(objs)
 	if !m.Busy() || !m.Error || m.Message != "Lane 2 jammed" || m.MessageType != "error" || m.Current != "lane2" {
 		t.Fatalf("model %+v", m)
 	}
-	if len(m.Units) != 2 || m.Units[0].Name != "Turtle_1" || len(m.Units[0].Lanes) != 2 || m.Units[1].Name != "Lanes" {
+	if len(m.Units) != 1 || m.Units[0].Name != "Turtle_1" || len(m.Units[0].Lanes) != 2 || len(m.Lanes) != 2 {
 		t.Fatalf("units %+v", m.Units)
 	}
-	l1, l2, l9 := m.Lane("lane1"), m.Lane("lane2"), m.Lane("lane9")
+	l1, l2 := m.Lane("lane1"), m.Lane("lane2")
 	if l1.State != "Ready" || strings.Join(l1.Tools, ",") != "T0,T4" || !l1.HasWeight || l1.Weight != 850 || l1.Color != "#ff8800" {
 		t.Errorf("lane1 %+v", l1)
 	}
 	if l2.State != "Tool Loading" || !l2.Active {
 		t.Errorf("lane2 %+v", l2)
 	}
-	if l9.State != "Prep" {
-		t.Errorf("lane9 %+v", l9)
+	if m.Lane("lane9") != nil {
+		t.Error("a stepper missing from AFC.lanes was shown as a lane")
 	}
 	if Parse(map[string]map[string]any{"extruder": {}}) != nil {
 		t.Error("no AFC object → nil model")
@@ -134,5 +134,34 @@ func TestSetCommands(t *testing.T) {
 	}
 	if _, err := LaneCommand(&Lane{Name: "E0; M112", Prep: true, Load: true}, Load); err == nil {
 		t.Error("lane name with a gcode delimiter accepted")
+	}
+}
+
+// A ViViD has drive and selector steppers next to its lanes; only the
+// names in AFC.lanes are lanes.
+func TestViViDDriveAndSelectorAreNotLanes(t *testing.T) {
+	objs := map[string]map[string]any{
+		"AFC":                          {"current_state": "Idle", "units": []any{"ViViD Vivid_1"}, "lanes": []any{"lane5", "lane6"}},
+		"AFC_ViViD Vivid_1":            {"lanes": []any{"lane5", "lane6", "Vivid_1_drive", "Vivid_1_selector"}},
+		"AFC_lane lane5":               {"unit": "Vivid_1", "map": "T5", "prep": false},
+		"AFC_lane lane6":               {"unit": "Vivid_1", "map": "T6", "prep": true, "load": true},
+		"AFC_stepper Vivid_1_drive":    {"unit": "Vivid_1"},
+		"AFC_stepper Vivid_1_selector": {"unit": "Vivid_1"},
+	}
+	m := Parse(objs)
+	var names []string
+	for _, l := range m.Lanes {
+		names = append(names, l.Name)
+	}
+	if strings.Join(names, ",") != "lane5,lane6" || len(m.Units) != 1 || len(m.Units[0].Lanes) != 2 {
+		t.Fatalf("lanes %v units %+v", names, m.Units)
+	}
+
+	// An AFC too old to report lanes falls back to the lane objects.
+	delete(objs["AFC"], "lanes")
+	delete(objs, "AFC_stepper Vivid_1_drive")
+	delete(objs, "AFC_stepper Vivid_1_selector")
+	if m := Parse(objs); len(m.Lanes) != 2 {
+		t.Fatalf("fallback lanes %d", len(m.Lanes))
 	}
 }

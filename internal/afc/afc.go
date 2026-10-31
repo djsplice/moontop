@@ -15,7 +15,9 @@
 //   - Units are "type name" strings ("Box_Turtle Turtle_1",
 //     "unit U1"); the unit object is "AFC_<type without _> <name>",
 //     matched case-insensitively.
-//   - Lane objects are "AFC_lane <name>" or the older "AFC_stepper <name>".
+//   - Lane objects are "AFC_lane <name>" or the older "AFC_stepper <name>",
+//     but only the names in AFC.lanes are lanes: ViViD units also have
+//     drive and selector steppers (jimmyjon711, AFC, 2026-10-31).
 //   - A weight that isn't reported is unknown, not zero.
 package afc
 
@@ -92,27 +94,21 @@ func Parse(objects map[string]map[string]any) *Model {
 		m.Message, m.MessageType = str(msg["message"]), str(msg["type"])
 	}
 
-	// Lane names: AFC.lanes first, then any lane objects it didn't list.
+	// Lane names come from AFC.lanes only — the AFC maintainers' rule.
+	// Some units have AFC_stepper objects that aren't lanes (a ViViD's
+	// Vivid_1_drive and Vivid_1_selector), so a stepper object alone
+	// doesn't make a lane. Only an AFC too old to report lanes falls back
+	// to the lane objects.
 	var names []string
-	seen := map[string]bool{}
-	add := func(n string) {
-		if n != "" && !seen[n] {
-			seen[n] = true
-			names = append(names, n)
+	if listed, ok := afc["lanes"].([]any); ok {
+		names = strs(listed)
+	} else {
+		for k := range objects {
+			if strings.HasPrefix(k, "AFC_lane ") || strings.HasPrefix(k, "AFC_stepper ") {
+				names = append(names, k[strings.IndexByte(k, ' ')+1:])
+			}
 		}
-	}
-	for _, n := range strs(afc["lanes"]) {
-		add(n)
-	}
-	var extra []string
-	for k := range objects {
-		if strings.HasPrefix(k, "AFC_lane ") || strings.HasPrefix(k, "AFC_stepper ") {
-			extra = append(extra, k[strings.IndexByte(k, ' ')+1:])
-		}
-	}
-	sort.Strings(extra)
-	for _, n := range extra {
-		add(n)
+		sort.Strings(names)
 	}
 
 	byName := map[string]*Lane{}
