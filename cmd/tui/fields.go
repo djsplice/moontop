@@ -282,8 +282,19 @@ func (m *model) renderFields(fl *fieldList, rows []numField, focused bool, width
 	for _, r := range rows {
 		labelW = max(labelW, lipgloss.Width(r.label))
 	}
-	// Long names (an output pin's section name) don't push values off.
-	labelW = min(labelW, max(6, width-14))
+	// Long names (an output pin's section name) don't push values off:
+	// labels get what the widest value leaves.
+	valueW := 1
+	for _, r := range rows {
+		if v, ok := r.value(m); ok {
+			txt := r.format(v)
+			if r.showM != nil {
+				txt = r.showM(m, v)
+			}
+			valueW = max(valueW, lipgloss.Width(txt))
+		}
+	}
+	labelW = min(labelW, max(6, width-2-2-valueW))
 	var out []string
 	for i, r := range rows {
 		mark := "  "
@@ -292,7 +303,23 @@ func (m *model) renderFields(fl *fieldList, rows []numField, focused bool, width
 			mark = setupCursorStyle.Render("▸ ")
 			lst = jogStepStyle
 		}
-		label := lst.Render(fmt.Sprintf("%-*s", labelW, clipWidth(r.label, labelW)))
+		// A label longer than the column keeps its full name when this
+		// row's own value leaves room (it then sits a little right).
+		labelText := fmt.Sprintf("%-*s", labelW, clipWidth(r.label, labelW))
+		if lw := lipgloss.Width(r.label); lw > labelW {
+			vw := 1
+			if v, ok := r.value(m); ok {
+				txt := r.format(v)
+				if r.showM != nil {
+					txt = r.showM(m, v)
+				}
+				vw = lipgloss.Width(txt)
+			}
+			if 2+lw+2+vw <= width {
+				labelText = r.label
+			}
+		}
+		label := lst.Render(labelText)
 		var value string
 		switch v, ok := r.value(m); {
 		case focused && i == fl.cursor && fl.editing:

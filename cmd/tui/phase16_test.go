@@ -155,7 +155,7 @@ func TestExtruderPane(t *testing.T) {
 	if m, g = send16(t, m, "+"); g != "" || !logContains(m, "below its minimum extrude temperature") {
 		t.Fatalf("cold + sent %q", g)
 	}
-	if !strings.Contains(m.renderExtruder(), "off:") {
+	if !strings.Contains(m.renderExtruder(), "off: nozzle too cold") {
 		t.Error("pane doesn't say extrusion is off")
 	}
 	// Printing: no extrusion or tool change; PA still adjusts.

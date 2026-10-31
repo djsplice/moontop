@@ -188,6 +188,9 @@ func (m model) renderExtruder() string {
 	act := "+ extrude  - retract"
 	if ok, why := canExtrude(&m); !ok {
 		act = "+ - off: " + why
+		if strings.Contains(why, "minimum extrude temperature") {
+			act = "+ - off: nozzle too cold"
+		}
 	}
 	lines = append(lines, "",
 		jogHintStyle.Render(clipWidth(act, w)),

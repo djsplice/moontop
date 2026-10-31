@@ -166,6 +166,18 @@ func TestOutputsControl(t *testing.T) {
 	}
 }
 
+// A long name keeps its full label when the values are short (the U1's
+// "e0 nozzle fan" was cut to "e0 nozzle fa").
+func TestOutputLabelsUseTheSpaceValuesLeave(t *testing.T) {
+	m, _ := outputsModel(t)
+	m.outputs = append(m.outputs, output{object: "heater_fan e0_nozzle_fan", name: "e0_nozzle_fan", kind: outAutoFan, scale: 1})
+	m.raw.merge("heater_fan e0_nozzle_fan", map[string]any{"speed": 0.0, "rpm": 0.0})
+	m = update(t, m, tea.WindowSizeMsg{Width: 160, Height: 60})
+	if body := m.renderOutputs(); !strings.Contains(body, "e0 nozzle fan") {
+		t.Fatalf("label cut:\n%s", body)
+	}
+}
+
 func TestOutputsStackUnderExtruder(t *testing.T) {
 	m, _ := outputsModel(t)
 	l := m.layout
