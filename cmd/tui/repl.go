@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
+	"github.com/justinh-rahb/moonraker-tui/internal/moo"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
 
@@ -416,6 +417,14 @@ func (m replModel) submit() (tea.Model, tea.Cmd) {
 	switch strings.ToLower(text) {
 	case "exit", "quit":
 		return m.quit()
+	}
+
+	if cow, _ := moo.Trigger(text); cow {
+		var cmds []tea.Cmd
+		for _, l := range moo.Say(moo.Random(), 44) {
+			cmds = append(cmds, m.println(l))
+		}
+		return m, tea.Sequence(cmds...)
 	}
 
 	echo := m.println(console.PrefixCommand + text)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/justinh-rahb/moonraker-tui/internal/moo"
 	"io"
 	"log"
 	"os"
@@ -33,6 +34,9 @@ func run(args []string) int {
 			return runGcode(args[1:], os.Stdin, os.Stdout, os.Stderr)
 		case "dump":
 			return runDump(args[1:], os.Stdout, os.Stderr)
+		case "moo":
+			fmt.Println(strings.Join(moo.Say(moo.Random(), 44), "\n"))
+			return 0
 		case "help", "-h", "-help", "--help":
 			usage()
 			return 0

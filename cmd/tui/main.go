@@ -31,6 +31,7 @@ import (
 	"github.com/justinh-rahb/moonraker-tui/internal/config"
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/macros"
+	"github.com/justinh-rahb/moonraker-tui/internal/moo"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
 
@@ -1109,6 +1110,18 @@ func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// moo: see internal/moo. COWBELL also rings the printer's beeper, when
+// it has one (M300), and that's the only thing sent.
+func (m *model) moo(bell bool) tea.Cmd {
+	for _, l := range moo.Say(moo.Random(), 44) {
+		m.appendLog(l)
+	}
+	if bell && m.gcodeCommands["M300"] && m.connected() {
+		return m.sendGcode(moo.Bell)
+	}
+	return nil
+}
+
 func (m *model) submitCommand() tea.Cmd {
 	text := strings.TrimSpace(m.input.Value())
 	m.input.SetValue("")
@@ -1124,6 +1137,9 @@ func (m *model) submitCommand() tea.Cmd {
 		m.history = append(m.history, text)
 	}
 	m.historyIdx = len(m.history)
+	if cow, bell := moo.Trigger(text); cow {
+		return m.moo(bell)
+	}
 	m.appendLog(">>> " + text)
 	return m.requireConnected("command", m.sendGcode(text))
 }
