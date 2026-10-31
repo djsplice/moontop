@@ -648,6 +648,10 @@ func (m model) renderSetup() string {
 		}
 	}
 	rightW := w - leftW - 4 - 4 - 2
+	// Inside a panel, Padding(0,1) leaves width-2 columns for content.
+	// Every line is clipped to that: a line that wrapped would make the
+	// screen taller than the terminal and scroll the title away.
+	leftCW, rightCW := leftW-2, rightW-2
 
 	// Left: categories.
 	var left []string
@@ -676,7 +680,7 @@ func (m model) renderSetup() string {
 	}
 	var right []string
 	for i := start; i < len(items) && i < start+listH; i++ {
-		right = append(right, renderSetupItem(items[i], st.inItems && i == st.item, rightW))
+		right = append(right, renderSetupItem(items[i], st.inItems && i == st.item, rightCW))
 	}
 	for len(right) < listH {
 		right = append(right, "")
@@ -687,7 +691,13 @@ func (m model) renderSetup() string {
 	}
 	right = append(right, "", about)
 
-	box := func(content []string, width int, focused bool) string {
+	box := func(content []string, width, contentW int, focused bool) string {
+		for i, l := range content {
+			content[i] = clipWidth(l, contentW)
+		}
+		if len(content) > bodyH {
+			content = content[:bodyH]
+		}
 		s := panelStyle.Width(width).Height(bodyH)
 		if focused {
 			s = s.BorderForeground(colorBorderFocused)
@@ -695,17 +705,17 @@ func (m model) renderSetup() string {
 		return s.Render(strings.Join(content, "\n"))
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		box(left, leftW, !st.inItems),
-		box(right, rightW, st.inItems))
+		box(left, leftW, leftCW, !st.inItems),
+		box(right, rightW, rightCW, st.inItems))
 
 	title := appTitleStyle.Render(appTitle + "  ·  Setup")
 	var bottom string
 	switch {
 	case st.editing != nil:
-		bottom = footerStyle.Render(st.editing.prompt+"   enter save  •  esc cancel") + "\n  " + st.input.View()
+		bottom = footerStyle.Render(clipWidth(st.editing.prompt+"   enter save  •  esc cancel", m.width-3)) + "\n  " + st.input.View()
 	default:
 		keysLine := "↑↓ j k select  •  ←→ / tab switch column  •  space toggle  •  enter edit  •  [ ] reorder  •  d d delete  •  esc / F2 close"
-		bottom = footerStyle.Render(keysLine)
+		bottom = footerStyle.Render(clipWidth(keysLine, m.width-3))
 	}
 	status := ""
 	if st.status != "" {
@@ -713,7 +723,7 @@ func (m model) renderSetup() string {
 		if strings.HasPrefix(st.status, "!!") {
 			s = consoleErrStyle
 		}
-		status = "\n" + lipgloss.NewStyle().MarginLeft(2).Render(s.Render(st.status))
+		status = "\n" + lipgloss.NewStyle().MarginLeft(2).Render(s.Render(clipWidth(st.status, m.width-3)))
 	}
 	return title + "\n" + bodyStyle.Render(body) + "\n" + bottom + status + "\n"
 }
@@ -730,20 +740,31 @@ func renderSetupItem(it setupItem, cursor bool, width int) string {
 	if it.note != "" {
 		text += "  " + consoleInfoStyle.Render(it.note)
 	}
+	// width is the panel's content width; the cursor column takes 2.
+	room := width - 2
 	if it.value != "" {
-		pad := width - lipgloss.Width(text) - lipgloss.Width(it.value) - 2
+		pad := room - lipgloss.Width(text) - lipgloss.Width(it.value)
 		if pad < 2 {
 			pad = 2
 		}
 		text += strings.Repeat(" ", pad) + it.value
 	}
-	if lipgloss.Width(text) > width-2 {
-		text = truncateRunes(stripANSI(text), width-3) + "…"
+	if lipgloss.Width(text) > room {
+		text = truncateRunes(stripANSI(text), room-1) + "…"
 	}
 	if cursor {
 		return setupCursorStyle.Render("▸ ") + text
 	}
 	return "  " + text
+}
+
+// clipWidth cuts a (possibly styled) line to w columns so it can never
+// wrap.
+func clipWidth(s string, w int) string {
+	if w < 1 || lipgloss.Width(s) <= w {
+		return s
+	}
+	return lipgloss.NewStyle().MaxWidth(w).Render(s)
 }
 
 // stripANSI removes styling so a line can be truncated by width.

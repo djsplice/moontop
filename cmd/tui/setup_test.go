@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/justinh-rahb/moonraker-tui/internal/config"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker/moonrakertest"
@@ -384,5 +385,43 @@ func TestLayoutWithHiddenPanes(t *testing.T) {
 	l = layoutWith(70, 60, focusJog, focusTuning)
 	if l.mode != layoutStacked || l.h(focusJog) != 0 || l.h(focusTuning) != 0 {
 		t.Errorf("stacked hidden: %+v", l.boxH)
+	}
+}
+
+// Every setup page and the help overlay must fit the terminal exactly:
+// a single wrapped line makes the view taller than the screen, which
+// scrolls the title away (and back) as you move between categories.
+func TestOverlaysFitTheTerminal(t *testing.T) {
+	srv := fakePrinter(t)
+	for _, size := range [][2]int{{80, 24}, {100, 30}, {120, 36}, {160, 50}, {237, 60}} {
+		m := setupModel(t, srv)
+		m = update(t, m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		check := func(what string) {
+			t.Helper()
+			v := strings.TrimSuffix(m.View(), "\n")
+			lines := strings.Split(v, "\n")
+			if len(lines) > size[1] {
+				t.Errorf("%dx%d %s: %d lines", size[0], size[1], what, len(lines))
+			}
+			for _, l := range lines {
+				if lipgloss.Width(l) > size[0] {
+					t.Errorf("%dx%d %s: line %d wide: %q", size[0], size[1], what, lipgloss.Width(l), l)
+					break
+				}
+			}
+			if !strings.Contains(lines[0], "Moontop") {
+				t.Errorf("%dx%d %s: title not on the first line", size[0], size[1], what)
+			}
+		}
+		m = press(t, m, "f2", "tab")
+		for i := range setupCategories {
+			m.setup.cat, m.setup.item = i, 0
+			check("setup/" + setupCategories[i].name)
+		}
+		m.setup.cat = 0
+		m = press(t, m, "enter") // editing: prompt + input line
+		check("setup/editing")
+		m = press(t, m, "esc", "esc", "esc", "?")
+		check("help")
 	}
 }

@@ -225,7 +225,11 @@ func (m model) renderHelp() string {
 	if end > len(lines) {
 		end = len(lines)
 	}
-	body := strings.Join(lines[start:end], "\n")
+	shown := make([]string, 0, end-start)
+	for _, l := range lines[start:end] {
+		shown = append(shown, clipWidth(l, m.width-3)) // never wrap: see renderSetup
+	}
+	body := strings.Join(shown, "\n")
 	more := ""
 	if len(lines) > h {
 		more = fmt.Sprintf("  •  %d–%d of %d", start+1, end, len(lines))
