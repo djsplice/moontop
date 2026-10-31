@@ -48,24 +48,17 @@ const (
 type layout struct {
 	mode layoutMode
 
-	// Panes hidden in setup; the View skips them.
+	// order is the top-row panes in display order (stacked mode adds
+	// the console last); hidden panes are left out of both.
+	order  []focusArea
 	hidden map[focusArea]bool
 
-	// Wide and stacked modes both populate these.
-	tableBoxW   int
-	jogBoxW     int
-	filesBoxW   int
-	tuningBoxW  int
-	consoleBoxW int
+	// Outer box sizes per pane. In wide mode every top-row pane has
+	// boxH == topRowH; the console's height is auto (0).
+	boxW map[focusArea]int
+	boxH map[focusArea]int
 
-	// Wide mode: shared outer height for the top row.
 	topRowH int
-
-	// Stacked mode: per-pane outer heights.
-	tableH  int
-	jogH    int
-	filesH  int
-	tuningH int
 
 	// Console pane: viewport (inner content) height.
 	consoleViewportH int
@@ -80,19 +73,56 @@ type layout struct {
 	filesContentH int
 }
 
+// w and h return a pane's outer box size (0 = hidden / auto).
+func (l layout) w(f focusArea) int { return l.boxW[f] }
+func (l layout) h(f focusArea) int { return l.boxH[f] }
+
+// paneSpec is what the solver needs to know about one pane.
+type paneSpec struct {
+	minW     int // narrowest usable outer width
+	naturalW int // width when it doesn't share spare space
+	weight   int // share of spare width; 0 = natural width only
+	innerH   int // content lines it wants (title included)
+}
+
+// layoutInput is everything the solver depends on, gathered by the
+// model (see resizeLayout) so computeLayout stays a pure function.
+type layoutInput struct {
+	termW, termH int
+	reservedRows int // e.g. the Klippy banner
+	order        []focusArea
+	hidden       map[focusArea]bool
+	weights      map[focusArea]int
+	consolePct   int // 0 = automatic
+	sensorCount  int
+}
+
+func defaultLayoutInput(termW, termH, sensorCount int) layoutInput {
+	return layoutInput{
+		termW: termW, termH: termH, sensorCount: sensorCount,
+		order:   []focusArea{focusFiles, focusJog, focusTuning, focusTable},
+		weights: map[focusArea]int{focusFiles: 1, focusTable: 2},
+	}
+}
+
+func (in layoutInput) specs() map[focusArea]paneSpec {
+	return map[focusArea]paneSpec{
+		focusFiles:  {minW: 24, naturalW: 32, weight: in.weights[focusFiles], innerH: 1 + 8},
+		focusJog:    {minW: 18, naturalW: 26, weight: in.weights[focusJog], innerH: 1 + jogContentMin},
+		focusTuning: {minW: 20, naturalW: 30, weight: in.weights[focusTuning], innerH: 1 + tuningRowsMin},
+		focusTable:  {minW: 30, naturalW: 46, weight: in.weights[focusTable], innerH: 2 + in.sensorCount},
+	}
+}
+
 // computeLayout produces a layout for the current terminal size.
 //
-// sensorCount is the number of rows the temp table wants to show — used
-// to hug the top-row height to actual content when there's room, and
-// to compute the inner table height.
-//
-// reservedRows is extra vertical chrome outside the panes (currently the
-// Klippy banner); it shrinks the space handed to the panes.
-//
-// hidden lists panes the user turned off in setup (UI-2); the others
-// share their space.
-func computeLayout(termW, termH, sensorCount, reservedRows int, hidden map[focusArea]bool) layout {
-	if termW < minTermW || termH < minTermH {
+// Wide mode: the visible top panes in configured order share the row —
+// each gets its minimum, panes with a weight split the spare width by
+// weight, natural-width panes grow toward their natural width first.
+// The console takes the rows below (or its configured percentage).
+// When the minimums don't fit, every pane stacks full-width instead.
+func computeLayout(in layoutInput) layout {
+	if in.termW < minTermW || in.termH < minTermH {
 		return layout{mode: layoutMinimal}
 	}
 
@@ -104,191 +134,148 @@ func computeLayout(termW, termH, sensorCount, reservedRows int, hidden map[focus
 		marginL = 2
 		gutterR = 4
 	)
+	availW := max(1, in.termW-marginL-gutterR)
+	availH := max(1, in.termH-chromeV-in.reservedRows)
 
-	availW := termW - marginL - gutterR
-	availH := termH - chromeV - reservedRows
-	if availW < 1 {
-		availW = 1
+	var top []focusArea
+	for _, f := range in.order {
+		if !in.hidden[f] {
+			top = append(top, f)
+		}
 	}
-	if availH < 1 {
-		availH = 1
+	specs := in.specs()
+	minSum := 0
+	for _, f := range top {
+		minSum += specs[f].minW
 	}
 
 	var l layout
-	if termW < minWideW {
-		l = computeStacked(availW, availH, sensorCount, hidden)
+	if in.termW < minWideW || minSum > availW {
+		l = computeStacked(availW, availH, top, specs, in)
 	} else {
-		l = computeWide(availW, availH, sensorCount, hidden)
+		l = computeWide(availW, availH, top, specs, in)
 	}
-	l.hidden = hidden
+	l.order = top
+	l.hidden = in.hidden
 	return l
 }
 
-// computeWide: temp + jog + tuning + files side by side on top,
-// console below. Width budget: jog and tuning are roughly fixed (they
-// hold compact widgets), files takes a chunk, table absorbs the rest.
-func computeWide(availW, availH, sensorCount int, hidden map[focusArea]bool) layout {
-	// Toolhead and Tuning hold compact widgets at a fixed width; Files
-	// and Temperatures share what's left 1:2. Hidden panes take no
-	// space. If no sharing pane is visible, the fixed ones share it.
-	fixedW := func(want int) int {
-		if want > availW/5 {
-			return availW / 5
-		}
-		return want
+func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSpec, in layoutInput) layout {
+	l := layout{mode: layoutWide, boxW: map[focusArea]int{}, boxH: map[focusArea]int{}}
+
+	// 1. Minimums.
+	spare := availW
+	for _, f := range top {
+		l.boxW[f] = specs[f].minW
+		spare -= specs[f].minW
 	}
-	var jogBoxW, tuningBoxW, filesBoxW, tableBoxW int
-	if !hidden[focusJog] {
-		jogBoxW = fixedW(26)
+	// 2. Natural-width panes grow toward their natural width, but no
+	//    further than a fifth of the row, so on a narrow terminal the
+	//    sharing panes (files, temperatures) aren't squeezed out.
+	for _, f := range top {
+		if specs[f].weight == 0 {
+			target := max(specs[f].minW, min(specs[f].naturalW, availW/5))
+			grow := max(0, min(spare, target-l.boxW[f]))
+			l.boxW[f] += grow
+			spare -= grow
+		}
 	}
-	if !hidden[focusTuning] {
-		tuningBoxW = fixedW(30)
+	// 3. Weighted panes split the rest; with none, natural-width panes
+	//    share it equally so the row is always full.
+	total := 0
+	for _, f := range top {
+		total += specs[f].weight
 	}
-	rest := availW - jogBoxW - tuningBoxW
-	switch {
-	case !hidden[focusFiles] && !hidden[focusTable]:
-		filesBoxW = rest / 3
-		if filesBoxW < 28 {
-			filesBoxW = 28
+	var takers []focusArea
+	for _, f := range top {
+		if total == 0 || specs[f].weight > 0 {
+			takers = append(takers, f)
 		}
-		tableBoxW = rest - filesBoxW
-		if tableBoxW < 32 {
-			tableBoxW = 32
+	}
+	given := 0
+	for i, f := range takers {
+		share := spare / max(1, len(takers))
+		if total > 0 {
+			share = spare * specs[f].weight / total
 		}
-	case !hidden[focusFiles]:
-		filesBoxW = rest
-	case !hidden[focusTable]:
-		tableBoxW = rest
-	default:
-		// Only fixed panes (or none): spread the leftover over them.
-		switch {
-		case jogBoxW > 0 && tuningBoxW > 0:
-			jogBoxW += rest / 2
-			tuningBoxW = availW - jogBoxW
-		case jogBoxW > 0:
-			jogBoxW = availW
-		case tuningBoxW > 0:
-			tuningBoxW = availW
+		if i == len(takers)-1 {
+			share = spare - given // remainder to the last, so the row is exact
 		}
+		l.boxW[f] += share
+		given += share
 	}
 
-	tableContentW := tableBoxW - panelInnerXReserve()
-	if tableContentW < 30 {
-		tableContentW = 30
-	}
-
-	// Outer top-row height = max(visible panes' inner needs) + borders.
-	needs := map[focusArea]int{
-		focusTable:  2 + sensorCount,
-		focusJog:    1 + jogContentMin, // title + jog body
-		focusFiles:  1 + 8,             // title + ~8 rows minimum
-		focusTuning: 1 + tuningRowsMin, // title + label/input rows + error line
-	}
-	innerH, topVisible := 0, false
-	for f, h := range needs {
-		if hidden[f] {
-			continue
-		}
-		topVisible = true
-		if h > innerH {
-			innerH = h
-		}
+	// Heights: the top row hugs its tallest pane unless the console has a
+	// configured share; a hidden console gives the row everything.
+	innerH := 0
+	for _, f := range top {
+		innerH = max(innerH, specs[f].innerH)
 	}
 	topRowH := innerH + 2
-	if topRowH > availH-5 {
-		topRowH = availH - 5
-		if topRowH < 8 {
-			topRowH = 8
-		}
+	if pct := in.consolePct; pct > 0 {
+		topRowH = availH - availH*pct/100
 	}
+	topRowH = max(8, min(topRowH, availH-5))
 	switch {
-	case !topVisible:
+	case len(top) == 0:
 		topRowH = 0
-	case hidden[focusConsole]:
+	case in.hidden[focusConsole]:
 		topRowH = availH
 	}
-
-	consoleOuter := availH - topRowH
-	consoleViewportH := consoleOuter - 2 - 1 - 1
-	if consoleViewportH < 3 {
-		consoleViewportH = 3
+	for _, f := range top {
+		l.boxH[f] = topRowH
 	}
+	l.topRowH = topRowH
 
-	return layout{
-		mode:             layoutWide,
-		tableBoxW:        tableBoxW,
-		jogBoxW:          jogBoxW,
-		filesBoxW:        filesBoxW,
-		tuningBoxW:       tuningBoxW,
-		consoleBoxW:      availW,
-		topRowH:          topRowH,
-		consoleViewportH: consoleViewportH,
-		inputW:           availW - panelInnerXReserve() - 2,
-		tableContentW:    tableContentW,
-		filesContentW:    filesBoxW - panelInnerXReserve(),
-		filesContentH:    topRowH - 2 - 1,
-	}
+	l.boxW[focusConsole] = availW
+	l.consoleViewportH = max(3, availH-topRowH-2-1-1)
+	l.inputW = availW - panelInnerXReserve() - 2
+	l.tableContentW = max(10, l.boxW[focusTable]-panelInnerXReserve())
+	l.filesContentW = l.boxW[focusFiles] - panelInnerXReserve()
+	l.filesContentH = topRowH - 2 - 1
+	return l
 }
 
 // tuningRowsMin counts the inner lines the tuning pane needs:
 // 4 fields × (label + input) + 1 line for inline errors = 9.
 const tuningRowsMin = 9
 
-// computeStacked: narrow terminal — every pane full-width, stacked.
-func computeStacked(availW, availH, sensorCount int, hidden map[focusArea]bool) layout {
-	outer := func(f focusArea, inner int) int {
-		if hidden[f] {
-			return 0
+// computeStacked: narrow terminal — every pane full-width, stacked in
+// the configured order, console last.
+func computeStacked(availW, availH int, top []focusArea, specs map[focusArea]paneSpec, in layoutInput) layout {
+	l := layout{mode: layoutStacked, boxW: map[focusArea]int{}, boxH: map[focusArea]int{}}
+	used := 0
+	for _, f := range top {
+		h := specs[f].innerH + 2
+		if f == focusFiles {
+			h = 1 + 6 + 2
 		}
-		return inner + 2
+		l.boxW[f] = availW
+		l.boxH[f] = h
+		used += h
 	}
-	tableH := outer(focusTable, 2+sensorCount)
-	jogH := outer(focusJog, 1+jogContentMin)
-	filesH := outer(focusFiles, 1+6)
-	tuningH := outer(focusTuning, 1+tuningRowsMin)
-
-	consoleOuter := availH - tableH - jogH - filesH - tuningH
-	if consoleOuter < 7 {
+	consoleOuter := availH - used
+	if !in.hidden[focusConsole] && consoleOuter < 7 {
 		consoleOuter = 7
-		over := availH - tableH - jogH - filesH - tuningH - consoleOuter
+		over := availH - used - consoleOuter
 		// over is negative if we overflow — shrink files first, then table.
-		for over < 0 && filesH > 6 {
-			filesH--
+		for over < 0 && l.boxH[focusFiles] > 6 {
+			l.boxH[focusFiles]--
 			over++
 		}
-		for over < 0 && tableH > 5 {
-			tableH--
+		for over < 0 && l.boxH[focusTable] > 5 {
+			l.boxH[focusTable]--
 			over++
 		}
 	}
-
-	consoleViewportH := consoleOuter - 2 - 1 - 1
-	if consoleViewportH < 3 {
-		consoleViewportH = 3
-	}
-
-	contentW := availW - panelInnerXReserve()
-	if contentW < 30 {
-		contentW = 30
-	}
-
-	return layout{
-		mode:             layoutStacked,
-		tableBoxW:        availW,
-		jogBoxW:          availW,
-		filesBoxW:        availW,
-		tuningBoxW:       availW,
-		consoleBoxW:      availW,
-		tableH:           tableH,
-		jogH:             jogH,
-		filesH:           filesH,
-		tuningH:          tuningH,
-		consoleViewportH: consoleViewportH,
-		inputW:           availW - panelInnerXReserve() - 2,
-		tableContentW:    contentW,
-		filesContentW:    contentW,
-		filesContentH:    filesH - 2 - 1,
-	}
+	l.boxW[focusConsole] = availW
+	l.consoleViewportH = max(3, consoleOuter-2-1-1)
+	contentW := max(30, availW-panelInnerXReserve())
+	l.inputW = availW - panelInnerXReserve() - 2
+	l.tableContentW = contentW
+	l.filesContentW = contentW
+	l.filesContentH = l.boxH[focusFiles] - 2 - 1
+	return l
 }
 
 // panelInnerXReserve returns the columns consumed by a panel's border

@@ -266,12 +266,12 @@ func TestDashboardConsoleFilters(t *testing.T) {
 func TestTemperaturesDropStateColumnWhenNarrow(t *testing.T) {
 	srv := fakePrinter(t)
 	m := readyModel(t, srv) // 160 columns: room for State
-	if !m.tableShowState || len(m.table.Columns()) != 4 {
-		t.Fatalf("wide: showState=%v cols=%d", m.tableShowState, len(m.table.Columns()))
+	if strings.Join(m.tempCols, ",") != "state,current,target" || len(m.table.Columns()) != 4 {
+		t.Fatalf("wide: cols=%v table cols=%d", m.tempCols, len(m.table.Columns()))
 	}
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
-	if m.tableShowState || len(m.table.Columns()) != 3 {
-		t.Fatalf("narrow: showState=%v cols=%d", m.tableShowState, len(m.table.Columns()))
+	if strings.Join(m.tempCols, ",") != "current,target" || len(m.table.Columns()) != 3 {
+		t.Fatalf("narrow: cols=%v table cols=%d", m.tempCols, len(m.table.Columns()))
 	}
 	for _, r := range m.table.Rows() {
 		if len(r) != 3 {
@@ -305,7 +305,7 @@ func TestToolheadHintsFitNarrowPane(t *testing.T) {
 		if m.layout.mode != layoutWide {
 			continue
 		}
-		limit := m.layout.jogBoxW - panelInnerXReserve()
+		limit := m.layout.w(focusJog) - panelInnerXReserve()
 		for _, l := range strings.Split(m.renderJog(), "\n") {
 			if lipgloss.Width(l) > limit {
 				t.Errorf("%d cols: toolhead line %q is %d wide, pane fits %d", w, l, lipgloss.Width(l), limit)

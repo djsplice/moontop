@@ -151,10 +151,21 @@ text); ctrl-keys, F-keys, `Tab` and arrows still work.
 
 `F2` (or `,`) opens a setup screen modelled on htop's: categories on the
 left, their settings on the right; changes apply and save immediately.
+In setup, `space` toggles, `enter` edits, `[` `]` reorder, `d d` deletes,
+`esc` goes back.
+
+Layout: the top row holds Files, Toolhead, Tuning and Temperatures in
+your order; panes with a width share split the spare width (Files 1,
+Temperatures 2 by default), the others keep their natural width. The
+console runs along the bottom, either taking what the top row doesn't
+need or a fixed percentage. Tab follows the on-screen order; the pane
+numbers stay with the pane. Below about 98 columns, or when the panes'
+minimum widths don't fit, everything stacks in the same order.
 
 | Category | Settings | Saved to |
 | -------- | -------- | -------- |
-| Panes | Show or hide each pane; the others take its space | config file |
+| Panes | Show or hide each pane; reorder the top row (`[` `]`); width share per pane (0 = natural width); console height | config file |
+| Columns | Temperatures: State, Current, Target, Power; Files: size, modified; files sorted newest first or by name | config file |
 | Temperatures | Hide sensors, rename heaters (`extruder1` → `T1 ASA`) | printer |
 | Console | Heat-wait and TMC filters on/off, your own regex filters | config file |
 | Toolhead | Jog step sizes, XY and Z feedrates | config file |

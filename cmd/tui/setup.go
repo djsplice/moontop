@@ -49,6 +49,7 @@ type setupItem struct {
 	edit    *setupEdit
 	initial string // edit's starting text
 	del     func(m *model) tea.Cmd
+	move    func(m *model, delta int) tea.Cmd // [ / ] reorder
 }
 
 type setupCategory struct {
@@ -61,16 +62,23 @@ type setupCategory struct {
 
 func checked(v bool) *bool { return &v }
 
-var setupCategories = []setupCategory{
-	{name: "Panes", about: "Hidden panes free their space for the others. Saved to the config file.", items: panesItems},
-	{name: "Temperatures", about: "Hide sensors you don't need; enter renames (empty = default). Saved to the printer.", items: tempsItems},
-	{name: "Console", about: "Lines matching a filter are hidden; ctrl+o shows them. Saved to the config file.", items: consoleItems,
-		add: &setupEdit{prompt: "Filter pattern (Go regexp)", apply: addFilter}, addAs: "add a filter"},
-	{name: "Toolhead", about: "Jog step sizes and feedrates. Saved to the config file.", items: toolheadItems},
-	{name: "Safety", about: "Prompts before dangerous actions. Saved to the config file.", items: safetyItems},
-	{name: "Presets", about: "Preheat presets for t in Temperatures. Moontop's are saved to the printer; Mainsail's are edited in Mainsail.", items: presetItems,
-		add: &setupEdit{prompt: "Name for a preset of the current heater targets", apply: addPreset}, addAs: "save current targets as a preset"},
-	{name: "Keys", about: "Every key, from the keymap registry. Remapping comes later.", items: keyItems},
+// setupCategories is filled in init: item functions read it back
+// (via clampSetup), which a package-level initializer can't allow.
+var setupCategories []setupCategory
+
+func init() {
+	setupCategories = []setupCategory{
+		{name: "Panes", about: "space shows/hides · [ ] reorder · enter sets width (0 = natural) or console height. Saved to the config file.", items: panesItems},
+		{name: "Columns", about: "Columns in Temperatures and Files; Temperatures drops State, then Power, when narrow. Saved to the config file.", items: columnsItems},
+		{name: "Temperatures", about: "Hide sensors you don't need; enter renames (empty = default). Saved to the printer.", items: tempsItems},
+		{name: "Console", about: "Lines matching a filter are hidden; ctrl+o shows them. Saved to the config file.", items: consoleItems,
+			add: &setupEdit{prompt: "Filter pattern (Go regexp)", apply: addFilter}, addAs: "add a filter"},
+		{name: "Toolhead", about: "Jog step sizes and feedrates. Saved to the config file.", items: toolheadItems},
+		{name: "Safety", about: "Prompts before dangerous actions. Saved to the config file.", items: safetyItems},
+		{name: "Presets", about: "Preheat presets for t in Temperatures. Moontop's are saved to the printer; Mainsail's are edited in Mainsail.", items: presetItems,
+			add: &setupEdit{prompt: "Name for a preset of the current heater targets", apply: addPreset}, addAs: "save current targets as a preset"},
+		{name: "Keys", about: "Every key, from the keymap registry. Remapping comes later.", items: keyItems},
+	}
 }
 
 // --- persistence -----------------------------------------------------------
@@ -113,24 +121,138 @@ func (m *model) editTemps(f func(t *config.Temperatures)) tea.Cmd {
 
 func panesItems(m *model) []setupItem {
 	var items []setupItem
-	for _, f := range paneOrder {
-		f := f
-		name := paneName(f)
+	toggle := func(name string) func(m *model) tea.Cmd {
+		return func(m *model) tea.Cmd {
+			hide := !m.cfg.Panes.PaneHidden(name)
+			if hide && len(m.cfg.Panes.Hidden) >= len(paneOrder)-1 {
+				m.setup.status = "!! at least one pane has to stay visible"
+				return nil
+			}
+			m.cfg.Panes.SetPaneHidden(name, hide)
+			return m.saveFile()
+		}
+	}
+	for _, name := range m.cfg.Panes.Ordered() {
+		name := name
+		f, _ := paneByName(name)
+		w := m.cfg.Panes.WidthOf(name)
+		value := "natural width"
+		if w > 0 {
+			value = fmt.Sprintf("width ×%d", w)
+		}
 		items = append(items, setupItem{
-			label: fmt.Sprintf("%d %s", paneNumber(f), name),
-			check: checked(!m.cfg.Panes.PaneHidden(name)),
-			toggle: func(m *model) tea.Cmd {
-				hide := !m.cfg.Panes.PaneHidden(name)
-				if hide && len(m.cfg.Panes.Hidden) >= len(paneOrder)-1 {
-					m.setup.status = "!! at least one pane has to stay visible"
-					return nil
-				}
-				m.cfg.Panes.SetPaneHidden(name, hide)
+			label:   fmt.Sprintf("%d %s", paneNumber(f), name),
+			check:   checked(!m.cfg.Panes.PaneHidden(name)),
+			value:   value,
+			toggle:  toggle(name),
+			initial: strconv.Itoa(w),
+			edit: &setupEdit{
+				prompt: name + " width: its share of spare width (0 = natural width, just what it needs)",
+				apply: func(m *model, v string) (tea.Cmd, error) {
+					n, err := strconv.Atoi(strings.TrimSpace(v))
+					if err != nil || n < 0 || n > 9 {
+						return nil, fmt.Errorf("width is a whole number from 0 to 9")
+					}
+					m.cfg.Panes.SetWidth(name, n)
+					return m.saveFile(), nil
+				},
+			},
+			move: func(m *model, delta int) tea.Cmd {
+				m.cfg.Panes.Move(name, delta)
+				m.setup.item += delta
+				m.clampSetup()
 				return m.saveFile()
 			},
 		})
 	}
+	pct := m.cfg.Panes.ConsolePercent()
+	value := "height auto"
+	if pct > 0 {
+		value = fmt.Sprintf("height %d%%", pct)
+	}
+	items = append(items, setupItem{
+		label:   fmt.Sprintf("%d Console", paneNumber(focusConsole)),
+		note:    "always along the bottom",
+		check:   checked(!m.cfg.Panes.PaneHidden("Console")),
+		value:   value,
+		toggle:  toggle("Console"),
+		initial: strconv.Itoa(pct),
+		edit: &setupEdit{
+			prompt: "Console height in percent of the screen (0 = auto: everything the top row doesn't need)",
+			apply: func(m *model, v string) (tea.Cmd, error) {
+				n, err := strconv.Atoi(strings.TrimSpace(v))
+				if err != nil || n < 0 || n > 85 || (n > 0 && n < 15) {
+					return nil, fmt.Errorf("console height is 0 (auto) or 15 to 85")
+				}
+				if n == 0 {
+					m.cfg.Panes.ConsoleHeight = nil
+				} else {
+					m.cfg.Panes.ConsoleHeight = config.Int(n)
+				}
+				return m.saveFile(), nil
+			},
+		},
+	})
 	return items
+}
+
+func columnsItems(m *model) []setupItem {
+	c := &m.cfg.Columns
+	var items []setupItem
+	names := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power (heater duty)",
+		"size": "Size", "modified": "Modified"}
+	temps := c.Temps()
+	for _, col := range config.TempColumns {
+		col := col
+		items = append(items, setupItem{
+			label: "Temperatures: " + names[col],
+			check: checked(contains(temps, col)),
+			toggle: func(m *model) tea.Cmd {
+				if !m.cfg.Columns.ToggleTemp(col) {
+					m.setup.status = "!! Temperatures needs at least one column besides Name"
+					return nil
+				}
+				return m.saveFile()
+			},
+		})
+	}
+	files := c.FileCols()
+	for _, col := range config.FileColumns {
+		col := col
+		items = append(items, setupItem{
+			label: "Files: " + names[col],
+			check: checked(contains(files, col)),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Columns.ToggleFile(col)
+				return m.saveFile()
+			},
+		})
+	}
+	sortValue := "newest first"
+	if c.SortByName() {
+		sortValue = "by name"
+	}
+	items = append(items, setupItem{
+		label: "Files: sort", value: sortValue, note: "space or enter switches",
+		toggle: func(m *model) tea.Cmd {
+			if m.cfg.Columns.SortByName() {
+				m.cfg.Columns.FilesSort = ""
+			} else {
+				m.cfg.Columns.FilesSort = "name"
+			}
+			return m.saveFile()
+		},
+	})
+	return items
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func tempsItems(m *model) []setupItem {
@@ -473,6 +595,14 @@ func (m *model) handleSetupKey(msg tea.KeyMsg) tea.Cmd {
 		case it.toggle != nil:
 			return it.toggle(m)
 		}
+	case "[", "]":
+		if it.move != nil {
+			d := 1
+			if k == "[" {
+				d = -1
+			}
+			return it.move(m, d)
+		}
 	case "d":
 		if it.del == nil {
 			return nil
@@ -574,7 +704,7 @@ func (m model) renderSetup() string {
 	case st.editing != nil:
 		bottom = footerStyle.Render(st.editing.prompt+"   enter save  •  esc cancel") + "\n  " + st.input.View()
 	default:
-		keysLine := "↑↓ j k move  •  ←→ / tab switch column  •  space toggle  •  enter edit  •  d d delete  •  esc / F2 close"
+		keysLine := "↑↓ j k select  •  ←→ / tab switch column  •  space toggle  •  enter edit  •  [ ] reorder  •  d d delete  •  esc / F2 close"
 		bottom = footerStyle.Render(keysLine)
 	}
 	status := ""

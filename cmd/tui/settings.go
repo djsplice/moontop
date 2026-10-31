@@ -87,6 +87,31 @@ func (m *model) hiddenPanes() map[focusArea]bool {
 	return h
 }
 
+// layoutInput gathers the solver's inputs from settings and state.
+func (m *model) layoutInput(reservedRows int) layoutInput {
+	in := defaultLayoutInput(m.width, m.height, len(m.shownSensors))
+	in.reservedRows = reservedRows
+	in.hidden = m.hiddenPanes()
+	in.order = nil
+	for _, name := range m.cfg.Panes.Ordered() {
+		if f, ok := paneByName(name); ok {
+			in.order = append(in.order, f)
+			in.weights[f] = m.cfg.Panes.WidthOf(name)
+		}
+	}
+	in.consolePct = m.cfg.Panes.ConsolePercent()
+	return in
+}
+
+func paneByName(name string) (focusArea, bool) {
+	for _, f := range paneOrder {
+		if paneName(f) == name {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
 // buildFilters turns the console settings into a FilterSet.
 func buildFilters(c config.Console) console.FilterSet {
 	var fs console.FilterSet
@@ -139,8 +164,11 @@ func (m *model) applySettings() {
 	m.presets = mergePresets(m.printerCfg.Presets, m.mainsailPresets)
 
 	if m.ready {
-		m.resizeLayout()
+		m.resizeLayout() // also re-picks the table columns
 		m.refreshConsole()
+	}
+	if len(m.fileInfos) > 0 {
+		m.rebuildFiles()
 	}
 }
 

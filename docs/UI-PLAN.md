@@ -2,7 +2,7 @@
 
 Oct 31, 2026 · Justin Hayes
 
-> UI-1 and UI-2 have shipped (see the roadmap's Done line for what UI-2 deferred); UI-3 is next. The "What's wrong today" and "Every control today" sections describe the app before UI-1.
+> UI-1, UI-2 and UI-3 have shipped; see the roadmap's Done line for what was deferred. The "What's wrong today" and "Every control today" sections describe the app before UI-1.
 
 ## Summary
 

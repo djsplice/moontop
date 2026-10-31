@@ -194,8 +194,10 @@ type gcodeSentMsg struct {
 // ---------------------------------------------------------------------------
 
 type sensorState struct {
-	Current float64
-	Target  float64
+	Current  float64
+	Target   float64
+	Power    float64 // 0–1, heaters only
+	HasPower bool
 }
 
 func (s *sensorState) stateLabel() string {
@@ -296,8 +298,12 @@ type model struct {
 	shownSensors    []string // sensorNames minus hidden ones, table order
 	setup           setupState
 
-	// Temperatures table shows the State column only when it fits.
-	tableShowState bool
+	// Temperatures columns actually shown: the configured ones that fit.
+	tempCols []string
+
+	// Gcode files as loaded, so a sort or column change can rebuild
+	// the list without asking Moonraker again.
+	fileInfos []moonraker.FileInfo
 
 	// Heater control (Phase 15): the object whose target is being
 	// edited in place ("" when not editing), its input, and presets
@@ -335,10 +341,48 @@ type model struct {
 // fileItem adapts a moonraker.FileInfo for bubbles/list.
 type fileItem struct {
 	info moonraker.FileInfo
+	cols []string // "size", "modified"
 }
 
-func (f fileItem) Title() string       { return f.info.Path }
-func (f fileItem) Description() string { return formatBytes(f.info.Size) }
+func (f fileItem) Title() string { return f.info.Path }
+func (f fileItem) Description() string {
+	var parts []string
+	for _, c := range f.cols {
+		switch c {
+		case "size":
+			parts = append(parts, formatBytes(f.info.Size))
+		case "modified":
+			parts = append(parts, time.Unix(int64(f.info.ModifiedTime), 0).Format("2006-01-02 15:04"))
+		}
+	}
+	return strings.Join(parts, "  ·  ")
+}
+
+// rebuildFiles fills the Files list from fileInfos with the configured
+// sort and columns, keeping the selected file selected.
+func (m *model) rebuildFiles() {
+	files := append([]moonraker.FileInfo(nil), m.fileInfos...)
+	if m.cfg.Columns.SortByName() {
+		sort.SliceStable(files, func(i, j int) bool { return strings.ToLower(files[i].Path) < strings.ToLower(files[j].Path) })
+	} else {
+		sort.SliceStable(files, func(i, j int) bool { return files[i].ModifiedTime > files[j].ModifiedTime })
+	}
+	var selected string
+	if it, ok := m.files.SelectedItem().(fileItem); ok {
+		selected = it.info.Path
+	}
+	cols := m.cfg.Columns.FileCols()
+	items := make([]list.Item, len(files))
+	idx := 0
+	for i, f := range files {
+		items[i] = fileItem{info: f, cols: cols}
+		if f.Path == selected {
+			idx = i
+		}
+	}
+	m.files.SetItems(items)
+	m.files.Select(idx)
+}
 func (f fileItem) FilterValue() string { return f.info.Path }
 
 // formatBytes renders a byte count in a human-friendly unit.
@@ -550,7 +594,9 @@ func (m model) initialize() tea.Cmd {
 		subMap := make(map[string][]string)
 		for _, name := range objects {
 			if isSensorObject(name) {
-				subMap[name] = []string{"temperature", "target"}
+				// power only exists on heaters; Moonraker simply omits
+				// fields an object doesn't have.
+				subMap[name] = []string{"temperature", "target", "power"}
 			}
 		}
 
@@ -694,6 +740,11 @@ func mergeStatus(
 					s.Target = f
 				}
 			}
+			if v, ok := fields["power"]; ok {
+				if f, ok := v.(float64); ok {
+					s.Power, s.HasPower = f, true
+				}
+			}
 		}
 	}
 }
@@ -815,11 +866,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendLog(fmt.Sprintf("!! load files: %v", msg.err))
 			return m, nil
 		}
-		items := make([]list.Item, len(msg.files))
-		for i, f := range msg.files {
-			items[i] = fileItem{info: f}
-		}
-		m.files.SetItems(items)
+		m.fileInfos = msg.files
+		m.rebuildFiles()
 		return m, nil
 
 	case printStartedMsg:
@@ -893,12 +941,26 @@ func paneNumber(f focusArea) int {
 }
 
 // cycleFocus moves focus by delta panes (+1 = Tab, -1 = shift+Tab).
+// Tab follows the on-screen order (top panes as configured, then the
+// console); pane numbers stay attached to the pane, not the position.
 func (m *model) cycleFocus(delta int) {
-	n := len(paneOrder)
-	idx := paneNumber(m.focus) - 1
+	var order []focusArea
+	for _, name := range m.cfg.Panes.Ordered() {
+		if f, ok := paneByName(name); ok {
+			order = append(order, f)
+		}
+	}
+	order = append(order, focusConsole)
+	n := len(order)
+	idx := 0
+	for i, f := range order {
+		if f == m.focus {
+			idx = i
+		}
+	}
 	hidden := m.hiddenPanes()
 	for i := 1; i <= n; i++ {
-		f := paneOrder[((idx+delta*i)%n+n)%n]
+		f := order[((idx+delta*i)%n+n)%n]
 		if !hidden[f] {
 			m.setFocus(f)
 			return
@@ -1302,7 +1364,7 @@ func (m *model) buildTable() {
 	)
 	// Matches the four columns above until setTableColumns resizes;
 	// rows must always have as many cells as there are columns.
-	m.tableShowState = true
+	m.tempCols = []string{"state", "current", "target"}
 
 	s := table.DefaultStyles()
 	s.Header = s.Header.
@@ -1329,7 +1391,7 @@ func (m *model) resizeLayout() {
 	if m.klippy.bannerVisible() {
 		reserved = 1
 	}
-	m.layout = computeLayout(m.width, m.height, len(m.shownSensors), reserved, m.hiddenPanes())
+	m.layout = computeLayout(m.layoutInput(reserved))
 	if m.layout.mode == layoutMinimal {
 		return
 	}
@@ -1338,20 +1400,13 @@ func (m *model) resizeLayout() {
 
 	// Data rows inside the table widget: outer pane height - title(1)
 	// - table-header(1) - borders(2).
-	var paneH int
-	switch m.layout.mode {
-	case layoutWide:
-		paneH = m.layout.topRowH
-	default:
-		paneH = m.layout.tableH
-	}
-	rowH := paneH - 4
+	rowH := m.layout.h(focusTable) - 4
 	if rowH < 1 {
 		rowH = 1
 	}
 	m.table.SetHeight(rowH)
 
-	m.viewport.Width = m.layout.consoleBoxW - panelInnerXReserve()
+	m.viewport.Width = m.layout.w(focusConsole) - panelInnerXReserve()
 	m.viewport.Height = m.layout.consoleViewportH
 	m.refreshConsole()
 	m.input.Width = m.layout.inputW
@@ -1364,29 +1419,38 @@ func (m *model) resizeLayout() {
 // to go when the pane is narrow (UI-3 makes the column set configurable).
 // bubbles/table cells carry 1 column of padding on each side.
 func (m *model) setTableColumns() {
-	const (
-		minNameW = 12
-		valueW   = 9 // "168.1°C"
-		stateW   = 9 // "heating"
-	)
-	w := m.layout.tableContentW
-	m.tableShowState = w >= minNameW+3*valueW+4*2
-	cols := 3
-	fixed := 2 * valueW
-	if m.tableShowState {
-		cols, fixed = 4, 2*valueW+stateW
+	const minNameW = 12
+	widths := map[string]int{"state": 9, "current": 9, "target": 9, "power": 6}
+	titles := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power"}
+
+	// The configured columns, minus whatever doesn't fit — State first
+	// (it restates Target), then Power. bubbles/table pads each cell by
+	// one column on each side.
+	cols := m.cfg.Columns.Temps()
+	need := func(cs []string) int {
+		n := minNameW + 2
+		for _, c := range cs {
+			n += widths[c] + 2
+		}
+		return n
 	}
-	nameW := w - fixed - cols*2
+	w := m.layout.tableContentW
+	for _, drop := range []string{"state", "power"} {
+		if need(cols) <= w {
+			break
+		}
+		cols = without(cols, drop)
+	}
+	m.tempCols = cols
+
+	nameW := w - need(cols) + minNameW
 	if nameW < minNameW {
 		nameW = minNameW
 	}
 	columns := []table.Column{{Title: "Name", Width: nameW}}
-	if m.tableShowState {
-		columns = append(columns, table.Column{Title: "State", Width: stateW})
+	for _, c := range cols {
+		columns = append(columns, table.Column{Title: titles[c], Width: widths[c]})
 	}
-	columns = append(columns,
-		table.Column{Title: "Current", Width: valueW},
-		table.Column{Title: "Target", Width: valueW})
 	// Rows must never have more cells than columns while switching.
 	// Emptying the rows resets bubbles/table's cursor to -1, so keep it.
 	cursor := m.table.Cursor()
@@ -1395,6 +1459,16 @@ func (m *model) setTableColumns() {
 	m.rebuildRows()
 	m.table.SetCursor(cursor)
 	m.clampTableCursor()
+}
+
+func without(list []string, s string) []string {
+	var out []string
+	for _, v := range list {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // clampTableCursor keeps a row selected whenever there are rows.
@@ -1417,16 +1491,28 @@ func (m *model) rebuildRows() {
 		if s.Target == 0 && !hasTarget(name) {
 			targetStr = "—"
 		}
-		row := table.Row{m.label(name)}
-		if m.tableShowState {
-			row = append(row, s.stateLabel())
-		}
 		if name == m.tempEdit {
 			// Plain text with a bar cursor: an embedded textinput's
 			// ANSI would throw off the table's column truncation.
 			targetStr = "→ " + m.tempInput.Value() + "▏"
 		}
-		row = append(row, fmt.Sprintf("%.1f°C", s.Current), targetStr)
+		row := table.Row{m.label(name)}
+		for _, c := range m.tempCols {
+			switch c {
+			case "state":
+				row = append(row, s.stateLabel())
+			case "current":
+				row = append(row, fmt.Sprintf("%.1f°C", s.Current))
+			case "target":
+				row = append(row, targetStr)
+			case "power":
+				p := "—"
+				if s.HasPower {
+					p = fmt.Sprintf("%.0f%%", s.Power*100)
+				}
+				row = append(row, p)
+			}
+		}
 		rows = append(rows, row)
 	}
 	m.table.SetRows(rows)
@@ -1482,64 +1568,38 @@ func (m model) View() string {
 		return renderMinimal(m.width, m.height)
 	}
 
-	tablePane := renderPanel(
-		m.paneTitle(focusTable),
-		m.table.View(),
-		m.focus == focusTable,
-		m.layout.tableBoxW,
-		paneHeight(m.layout, focusTable),
-	)
-	jogPane := renderPanel(
-		m.paneTitle(focusJog),
-		m.renderJog(),
-		m.focus == focusJog,
-		m.layout.jogBoxW,
-		paneHeight(m.layout, focusJog),
-	)
-	filesPane := renderPanel(
-		m.paneTitle(focusFiles),
-		m.renderFiles(),
-		m.focus == focusFiles,
-		m.layout.filesBoxW,
-		paneHeight(m.layout, focusFiles),
-	)
-	tuningPane := renderPanel(
-		m.paneTitle(focusTuning),
-		m.renderTuning(),
-		m.focus == focusTuning,
-		m.layout.tuningBoxW,
-		paneHeight(m.layout, focusTuning),
-	)
-	consolePane := renderPanel(
-		m.paneTitle(focusConsole),
-		m.viewport.View()+"\n"+m.input.View(),
-		m.focus == focusConsole,
-		m.layout.consoleBoxW,
-		0, // auto-size to content
-	)
-
-	// Panes hidden in setup are left out entirely.
-	shown := func(fs ...focusArea) []string {
-		views := map[focusArea]string{focusFiles: filesPane, focusJog: jogPane, focusTuning: tuningPane, focusTable: tablePane, focusConsole: consolePane}
-		var out []string
-		for _, f := range fs {
-			if !m.layout.hidden[f] {
-				out = append(out, views[f])
-			}
-		}
-		return out
+	bodies := map[focusArea]func() string{
+		focusTable:   m.table.View,
+		focusJog:     m.renderJog,
+		focusFiles:   m.renderFiles,
+		focusTuning:  m.renderTuning,
+		focusConsole: func() string { return m.viewport.View() + "\n" + m.input.View() },
+	}
+	pane := func(f focusArea) string {
+		return renderPanel(m.paneTitle(f), bodies[f](), m.focus == f, m.layout.w(f), m.layout.h(f))
+	}
+	// Top panes in the configured order (hidden ones are already left
+	// out of layout.order), console last unless hidden.
+	var top []string
+	for _, f := range m.layout.order {
+		top = append(top, pane(f))
 	}
 	var stacked string
 	switch m.layout.mode {
 	case layoutWide:
-		rows := []string{}
-		if top := shown(focusFiles, focusJog, focusTuning, focusTable); len(top) > 0 {
+		var rows []string
+		if len(top) > 0 {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top...))
 		}
-		rows = append(rows, shown(focusConsole)...)
+		if !m.layout.hidden[focusConsole] {
+			rows = append(rows, pane(focusConsole))
+		}
 		stacked = lipgloss.JoinVertical(lipgloss.Left, rows...)
 	default: // stacked
-		stacked = lipgloss.JoinVertical(lipgloss.Left, shown(focusFiles, focusJog, focusTuning, focusTable, focusConsole)...)
+		if !m.layout.hidden[focusConsole] {
+			top = append(top, pane(focusConsole))
+		}
+		stacked = lipgloss.JoinVertical(lipgloss.Left, top...)
 	}
 	body := bodyStyle.Render(stacked)
 
@@ -1685,34 +1745,11 @@ func (m model) paneTitle(f focusArea) string {
 	return t
 }
 
-// paneHeight returns the outer height for a given pane in the current
-// layout — wide mode shares one top-row height, stacked mode has
-// per-pane heights.
-func paneHeight(l layout, f focusArea) int {
-	if l.mode == layoutWide {
-		if f == focusTable || f == focusJog || f == focusFiles || f == focusTuning {
-			return l.topRowH
-		}
-		return 0
-	}
-	switch f {
-	case focusTable:
-		return l.tableH
-	case focusJog:
-		return l.jogH
-	case focusFiles:
-		return l.filesH
-	case focusTuning:
-		return l.tuningH
-	}
-	return 0
-}
-
 // renderJog produces the contents of the jog pane: an XY directional
 // pad, Z controls, the active step size, and the current toolhead
 // position.
 func (m model) renderJog() string {
-	contentW := m.layout.jogBoxW - panelInnerXReserve()
+	contentW := m.layout.w(focusJog) - panelInnerXReserve()
 	if contentW < 10 {
 		contentW = 10
 	}

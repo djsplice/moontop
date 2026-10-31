@@ -405,8 +405,10 @@ func TestGcodeStoreBackfillPrependsBeforeLiveLines(t *testing.T) {
 }
 
 func TestComputeLayoutReservedRows(t *testing.T) {
-	a := computeLayout(160, 50, 4, 0, nil)
-	b := computeLayout(160, 50, 4, 1, nil)
+	in := defaultLayoutInput(160, 50, 4)
+	a := computeLayout(in)
+	in.reservedRows = 1
+	b := computeLayout(in)
 	if a.consoleViewportH+a.topRowH-(b.consoleViewportH+b.topRowH) != 1 {
 		t.Fatalf("reserving 1 row changed pane rows by %d", a.consoleViewportH+a.topRowH-(b.consoleViewportH+b.topRowH))
 	}

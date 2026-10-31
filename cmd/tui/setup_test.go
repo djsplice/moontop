@@ -359,21 +359,30 @@ func TestUnreadableConfigIsNeverOverwritten(t *testing.T) {
 	}
 }
 
+func layoutWith(w, h int, hidden ...focusArea) layout {
+	in := defaultLayoutInput(w, h, 3)
+	in.hidden = map[focusArea]bool{}
+	for _, f := range hidden {
+		in.hidden[f] = true
+	}
+	return computeLayout(in)
+}
+
 func TestLayoutWithHiddenPanes(t *testing.T) {
-	l := computeLayout(160, 50, 3, 0, map[focusArea]bool{focusConsole: true})
+	l := layoutWith(160, 50, focusConsole)
 	if l.topRowH != 50-5 {
 		t.Errorf("console hidden: top row %d, want all %d rows", l.topRowH, 50-5)
 	}
-	l = computeLayout(160, 50, 3, 0, map[focusArea]bool{focusFiles: true, focusTable: true})
-	if l.jogBoxW+l.tuningBoxW != 160-6 {
-		t.Errorf("fixed panes should fill the row: %d + %d", l.jogBoxW, l.tuningBoxW)
+	l = layoutWith(160, 50, focusFiles, focusTable)
+	if l.w(focusJog)+l.w(focusTuning) != 160-6 {
+		t.Errorf("natural-width panes should fill the row: %d + %d", l.w(focusJog), l.w(focusTuning))
 	}
-	l = computeLayout(160, 50, 3, 0, map[focusArea]bool{focusFiles: true})
-	if l.filesBoxW != 0 || l.tableBoxW != 160-6-l.jogBoxW-l.tuningBoxW {
-		t.Errorf("table should take Files' space: %+v", l)
+	l = layoutWith(160, 50, focusFiles)
+	if l.w(focusFiles) != 0 || l.w(focusTable) != 160-6-l.w(focusJog)-l.w(focusTuning) {
+		t.Errorf("table should take Files' space: %+v", l.boxW)
 	}
-	l = computeLayout(70, 60, 3, 0, map[focusArea]bool{focusJog: true, focusTuning: true})
-	if l.mode != layoutStacked || l.jogH != 0 || l.tuningH != 0 {
-		t.Errorf("stacked hidden: %+v", l)
+	l = layoutWith(70, 60, focusJog, focusTuning)
+	if l.mode != layoutStacked || l.h(focusJog) != 0 || l.h(focusTuning) != 0 {
+		t.Errorf("stacked hidden: %+v", l.boxH)
 	}
 }

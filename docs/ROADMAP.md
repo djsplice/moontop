@@ -119,7 +119,7 @@ curl -s http://10.0.3.207:7125/printer/objects/list > testdata/objects.json
 curl -s "http://10.0.3.207:7125/printer/objects/query?AFC&toolhead&print_stats" > testdata/afc_query.json
 ```
 
-**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), and UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets). Deferred from UI-2: the Display category (ASCII glyphs, compact borders) and editable keys; pane order and sizes stay in UI-3.
+**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets) and UI-3 (layout solver: pane order, width shares, console height; Temperatures and Files columns, including heater Power). Still open from the UI plan: the Display category (ASCII glyphs, compact borders) and editable keys. Next: Phase 13 (AFC), which plugs into the layout as one more pane.
 
 UI-1 to UI-3 come before Phase 13 (AFC), decided 2026-10-31: AFC adds a pane and many per-lane objects that need the same show/hide and selection machinery.
 

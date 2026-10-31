@@ -111,3 +111,63 @@ func TestValidateFilter(t *testing.T) {
 		t.Fatal("validation wrong")
 	}
 }
+
+func TestPaneOrderAndWidths(t *testing.T) {
+	p := Panes{Order: []string{"Temperatures", "Bogus", "Files", "Files"}}
+	if got := strings.Join(p.Ordered(), ","); got != "Temperatures,Files,Toolhead,Tuning" {
+		t.Fatalf("Ordered = %s", got)
+	}
+	p = Panes{}
+	p.Move("Tuning", -1)
+	if got := strings.Join(p.Ordered(), ","); got != "Files,Tuning,Toolhead,Temperatures" {
+		t.Fatalf("after move: %s", got)
+	}
+	p.Move("Tuning", 1) // back to default order: stored as nothing
+	if p.Order != nil {
+		t.Fatalf("default order stored: %v", p.Order)
+	}
+	p.Move("Files", -1) // already first: no-op
+	if p.Order != nil {
+		t.Fatal("out-of-range move changed the order")
+	}
+	if p.WidthOf("Temperatures") != 2 || p.WidthOf("Toolhead") != 0 {
+		t.Fatal("default widths")
+	}
+	p.SetWidth("Toolhead", 3)
+	p.SetWidth("Files", 1) // default: not stored
+	if p.WidthOf("Toolhead") != 3 || len(p.Width) != 1 {
+		t.Fatalf("widths %v", p.Width)
+	}
+	p.SetWidth("Toolhead", 0)
+	if p.Width != nil {
+		t.Fatalf("default width stored: %v", p.Width)
+	}
+}
+
+func TestColumns(t *testing.T) {
+	var c Columns
+	if strings.Join(c.Temps(), ",") != "state,current,target" || strings.Join(c.FileCols(), ",") != "size" {
+		t.Fatal("defaults")
+	}
+	c.ToggleTemp("power")
+	c.ToggleTemp("state")
+	if got := strings.Join(c.Temps(), ","); got != "current,target,power" {
+		t.Fatalf("temps %s", got)
+	}
+	if got := strings.Join(c.Temperatures, ","); got != "current,target,power" {
+		t.Fatalf("stored out of display order: %s", got)
+	}
+	c.ToggleTemp("current")
+	c.ToggleTemp("power")
+	if c.ToggleTemp("target") {
+		t.Fatal("removing the last column should be refused")
+	}
+	c.ToggleFile("size")
+	if len(c.FileCols()) != 0 {
+		t.Fatalf("no file columns: %v", c.FileCols())
+	}
+	c.ToggleFile("size")
+	if c.Files != nil {
+		t.Fatalf("back to default should store nothing: %v", c.Files)
+	}
+}
