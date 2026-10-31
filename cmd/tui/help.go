@@ -15,7 +15,8 @@ import (
 //  2. E-stop arms from anywhere, replacing any pending prompt,
 //  3. a pending confirmation swallows everything but y / n / esc,
 //  4. global and job/Klipper keys — unless the focused widget is
-//     taking text (capturesText),
+//     taking text (capturesText); job/Klipper keys also yield to a
+//     pane that binds the same key (paneClaims),
 //  5. the focused pane.
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, *keys.EStop) {
@@ -83,6 +84,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleLineEditKey(msg)
 	}
 
+	// Typing a toolhead position or step owns the keyboard too.
+	if m.thEditing {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleToolheadEditKey(msg)
+	}
+
 	// Editing a heater target owns the keyboard (ctrl+c still quits).
 	if m.tempEdit != "" {
 		if msg.String() == "ctrl+c" {
@@ -118,11 +127,15 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.refreshConsole()
 			return m, nil
 		}
-		if cmd, handled := m.handleJobControl(msg); handled {
-			return m, cmd
-		}
-		if cmd, handled := m.handleKlippyControl(msg); handled {
-			return m, cmd
+		// A key the focused pane binds itself (c = Z down in Toolhead)
+		// goes to the pane, not to the job or Klipper controls.
+		if !m.paneClaims(msg) {
+			if cmd, handled := m.handleJobControl(msg); handled {
+				return m, cmd
+			}
+			if cmd, handled := m.handleKlippyControl(msg); handled {
+				return m, cmd
+			}
 		}
 	}
 
@@ -183,6 +196,9 @@ func (m *model) helpLines() []string {
 		h := e.b.Help()
 		k := fmt.Sprintf("  %-*s  ", keyW, h.Key)
 		ok, why := e.active(m)
+		if ok && (e.scope == scopeJob || e.scope == scopeKlipper) && m.paneShadows(e.b) {
+			ok, why = false, "not from the "+paneName(m.focus)+" pane, which uses this key"
+		}
 		if ok {
 			lines = append(lines, helpKeyStyle.Render(k)+h.Desc)
 		} else {
@@ -191,7 +207,8 @@ func (m *model) helpLines() []string {
 	}
 	lines = append(lines, "",
 		consoleInfoStyle.Render("While the console, a file filter or a Tuning field is taking text,"),
-		consoleInfoStyle.Render("printable keys type text; ctrl-keys, F-keys, tab and arrows still work."))
+		consoleInfoStyle.Render("printable keys type text; ctrl-keys, F-keys, tab and arrows still work."),
+		consoleInfoStyle.Render("In Toolhead and Tuning, digits type a value; use tab to move on."))
 	return lines
 }
 

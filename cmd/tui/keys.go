@@ -31,6 +31,7 @@ const (
 	scopeKlipper
 	scopeFiles
 	scopeToolhead
+	scopeToolheadEdit
 	scopeTuning
 	scopeTemps
 	scopeTempEdit
@@ -51,6 +52,8 @@ func (s keyScope) title() string {
 		return "Files"
 	case scopeToolhead:
 		return "Toolhead"
+	case scopeToolheadEdit:
+		return "Toolhead, typing a position or step"
 	case scopeTuning:
 		return "Tuning"
 	case scopeTemps:
@@ -99,6 +102,7 @@ var keys = struct {
 	Confirm, Deny, HelpScroll                                            *key.Binding
 	FilesMove, FilesFilter, FilesStart                                   *key.Binding
 	JogX, JogY, JogZ, StepDown, StepUp                                   *key.Binding
+	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                    *key.Binding
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
 	TuneMove, TuneEdit, TuneApply                                        *key.Binding
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
@@ -131,16 +135,23 @@ var keys = struct {
 	FilesFilter: bind([]string{"/"}, "/", "filter files (esc clears)"),
 	FilesStart:  bind([]string{"enter"}, "enter", "print selected file (confirms)"),
 
-	JogX:      bind([]string{"left", "right"}, "← →", "jog X by the step"),
-	JogY:      bind([]string{"up", "down"}, "↑ ↓", "jog Y by the step"),
-	JogZ:      bind([]string{"pgup", "pgdown"}, "PgUp PgDn", "jog Z by the step"),
-	StepDown:  bind([]string{"["}, "[", "smaller step"),
-	StepUp:    bind([]string{"]"}, "]", "larger step"),
-	HomeAll:   bind([]string{"H"}, "H", "home all axes"),
-	HomeX:     bind([]string{"x"}, "x", "home X"),
-	HomeY:     bind([]string{"y"}, "y", "home Y"),
-	HomeZ:     bind([]string{"z"}, "z", "home Z"),
-	MotorsOff: bind([]string{"m"}, "m", "motors off (M84)"),
+	// Toolhead: WASD jogs XY, space jumps (Z up), c crouches (Z down);
+	// the arrows move the field cursor and change the step.
+	JogX:         bind([]string{"a", "d"}, "a d", "jog X − / + by the step"),
+	JogY:         bind([]string{"w", "s"}, "w s", "jog Y + / − by the step"),
+	JogZ:         bind([]string{" ", "c", "pgup", "pgdown"}, "space c", "jog Z up (jump) / down (crouch); PgUp PgDn too"),
+	StepDown:     bind([]string{"left", "["}, "← [", "smaller step"),
+	StepUp:       bind([]string{"right", "]"}, "→ ]", "larger step"),
+	ThMove:       bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select X, Y, Z or step"),
+	ThType:       bind([]string{}, "0–9 . -", "type a position to move to (or a custom step)"),
+	ThEdit:       bind([]string{"enter"}, "enter", "edit the selected field"),
+	ThEditApply:  bind([]string{}, "enter", "move there (absolute), or use the step"),
+	ThEditCancel: bind([]string{}, "esc", "cancel"),
+	HomeAll:      bind([]string{"H"}, "H", "home all axes"),
+	HomeX:        bind([]string{"x"}, "x", "home X"),
+	HomeY:        bind([]string{"y"}, "y", "home Y"),
+	HomeZ:        bind([]string{"z"}, "z", "home Z"),
+	MotorsOff:    bind([]string{"m"}, "m", "motors off (M84)"),
 
 	TuneMove:  bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select field"),
 	TuneEdit:  bind([]string{}, "0–9 .", "type a value"),
@@ -223,15 +234,22 @@ var registry = []keyEntry{
 	{b: keys.FilesFilter, scope: scopeFiles, short: "filter", footer: true, widget: true},
 	{b: keys.FilesStart, scope: scopeFiles, short: "print", footer: true},
 
-	{b: keys.JogX, scope: scopeToolhead, short: "X", footer: true},
-	{b: keys.JogY, scope: scopeToolhead, short: "Y", footer: true},
-	{b: keys.JogZ, scope: scopeToolhead, short: "Z", footer: true},
-	{b: keys.StepDown, scope: scopeToolhead},
+	{b: keys.JogX, scope: scopeToolhead, short: "X", footer: true, when: canMove},
+	{b: keys.JogY, scope: scopeToolhead, short: "Y", footer: true, when: canMove},
+	{b: keys.JogZ, scope: scopeToolhead, short: "Z", footer: true, when: canMove},
+	{b: keys.ThMove, scope: scopeToolhead, short: "field", footer: true},
+	{b: keys.ThType, scope: scopeToolhead, short: "type", footer: true},
+	{b: keys.ThEdit, scope: scopeToolhead},
+	{b: keys.StepDown, scope: scopeToolhead, short: "step", footer: true},
 	{b: keys.StepUp, scope: scopeToolhead},
-	{b: keys.HomeAll, scope: scopeToolhead, short: "home", footer: true},
-	{b: keys.HomeX, scope: scopeToolhead},
-	{b: keys.HomeY, scope: scopeToolhead},
-	{b: keys.HomeZ, scope: scopeToolhead},
+	{b: keys.HomeAll, scope: scopeToolhead, short: "home", footer: true, when: canMove},
+	{b: keys.HomeX, scope: scopeToolhead, when: canMove},
+	{b: keys.HomeY, scope: scopeToolhead, when: canMove},
+	{b: keys.HomeZ, scope: scopeToolhead, when: canMove},
+
+	{b: keys.ThType, scope: scopeToolheadEdit, short: "type", footer: true},
+	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "go", footer: true},
+	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 	{b: keys.MotorsOff, scope: scopeToolhead, when: whileIdle},
 
 	{b: keys.TuneMove, scope: scopeTuning, short: "field", footer: true},
@@ -294,6 +312,9 @@ func footerHints(m *model) (pane, job []string) {
 	if m.tempEdit != "" {
 		ps = scopeTempEdit
 	}
+	if m.thEditing {
+		ps = scopeToolheadEdit
+	}
 	var p, j []string
 	for _, e := range registry {
 		if !e.footer {
@@ -311,7 +332,9 @@ func footerHints(m *model) (pane, job []string) {
 		case ps:
 			p = append(p, h.Key+" "+label)
 		case scopeJob:
-			if m.focus != focusConsole {
+			// Hidden in the console (keys type text there) and when the
+			// focused pane uses the same key (c is Z down in Toolhead).
+			if m.focus != focusConsole && !m.paneShadows(e.b) {
 				j = append(j, h.Key+" "+label)
 			}
 		}
@@ -354,6 +377,47 @@ func (m *model) capturesText(msg tea.KeyMsg) bool {
 	case focusTuning:
 		// Only characters a number can contain; letters stay commands.
 		return strings.Trim(string(msg.Runes), "0123456789.-") == ""
+	case focusJog:
+		// Digits start typing a position. Number keys therefore don't
+		// jump panes from here (as in Tuning); tab still moves on.
+		return msg.Type == tea.KeyRunes && strings.Trim(string(msg.Runes), "0123456789.-") == ""
 	}
 	return false
+}
+
+// paneClaims reports whether the focused pane binds msg itself. A
+// pane key wins over a job or Klipper key that shares it — in the
+// Toolhead pane, c is Z down, not cancel print. Global navigation
+// (help, setup, tab, quit) is never shadowed: no pane binds those.
+func (m *model) paneClaims(msg tea.KeyMsg) bool {
+	ps := paneScope(m.focus)
+	for _, e := range registry {
+		if e.scope == ps && !e.widget && key.Matches(msg, *e.b) {
+			return true
+		}
+	}
+	return false
+}
+
+// paneShadows reports whether the focused pane binds any of b's keys.
+func (m *model) paneShadows(b *key.Binding) bool {
+	for _, k := range b.Keys() {
+		if m.paneClaims(keyMsgFor(k)) {
+			return true
+		}
+	}
+	return false
+}
+
+// keyMsgFor builds the KeyMsg for a single-character key ("c", " ").
+// Only those can collide with job and Klipper keys; anything else
+// returns a KeyMsg that matches nothing.
+func keyMsgFor(k string) tea.KeyMsg {
+	if k == " " {
+		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")}
+	}
+	if r := []rune(k); len(r) == 1 {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: r}
+	}
+	return tea.KeyMsg{Type: -1000}
 }

@@ -14,8 +14,9 @@ edges. Single-printer, single-host, no auth, no persistence.
 - **Temperatures** — auto-discovered heaters and sensors with live
   current/target readouts (`extruder`, `heater_bed`, `heater_generic`,
   `temperature_sensor`, `temperature_fan`).
-- **Toolhead jog pad** — keyboard-driven XY/Z jogging with cycleable
-  step sizes (0.1 / 1 / 10 / 25 / 50 / 100 mm), live X/Y/Z position.
+- **Toolhead** — WASD jogging (space jumps Z up, `c` crouches Z
+  down), step sizes (0.1 / 1 / 10 / 25 / 50 / 100 mm, or type your
+  own), and X/Y/Z fields you can type an absolute position into.
 - **Tuning** — editable `SET_VELOCITY_LIMIT` fields (velocity,
   acceleration, square corner velocity, min cruise ratio).
 - **Files** — gcode file list from the `gcodes` root, sorted by mtime,
@@ -139,7 +140,7 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | Pane | Keys |
 | ---- | ---- |
 | Files | `↑↓` or `j k` select, `/` filter, `Enter` print (confirms) |
-| Toolhead | `←→` jog X, `↑↓` jog Y, `PgUp/PgDn` jog Z, `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
+| Toolhead | `w a s d` jog Y+ X− Y− X+, `space` jog Z up, `c` jog Z down (`PgUp/PgDn` too), `↑↓` select X / Y / Z / step, type a number (or `Enter`) to edit it in place — `Enter` moves there (absolute) or uses that step, `Esc` cancels; `← →` or `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
 | Tuning | `↑↓` or `j k` select field, type a value, `Enter` apply changed fields |
 | Temperatures | `↑↓` or `j k` select, `Enter` set the target in place (type °C, `Enter` sends, `Esc` cancels), `t` preheat preset, `x` selected heater off, `X` all heaters off |
 | Console | type gcode, `Enter` send, `↑↓` history |
@@ -147,7 +148,14 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 
 While the console, a file filter or a Tuning field is taking text,
 printable keys type text (so `q` or `1` in a filename or gcode is just
-text); ctrl-keys, F-keys, `Tab` and arrows still work.
+text); ctrl-keys, F-keys, `Tab` and arrows still work. In Toolhead and
+Tuning, digits type a value, so use `Tab` to leave them.
+
+In the Toolhead pane `c` jogs Z down rather than cancelling the print;
+cancel from any other pane. Toolhead moves are refused while printing
+(pause first), on an axis Klipper hasn't homed (shown as `?` or
+`unhomed`), and outside the axis limits. Positions are gcode
+coordinates, so what you type is what `G1` moves to.
 
 ### Setup and settings
 

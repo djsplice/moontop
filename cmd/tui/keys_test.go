@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,8 +20,13 @@ func TestRegistryEntriesAreComplete(t *testing.T) {
 	}
 }
 
-// A pane key must never shadow a global, job or Klipper key: those are
-// checked first, so the pane binding would be dead.
+// A pane key must never shadow a global key (those are checked first, so
+// the pane binding would be dead). It may reuse a job or Klipper key
+// only deliberately: the pane then wins while focused (paneClaims).
+var allowedPaneShadows = map[string]bool{
+	"Toolhead c": true, // crouch = Z down; cancel works from any other pane
+}
+
 func TestPaneKeysDoNotCollideWithGlobalKeys(t *testing.T) {
 	global := map[string]string{}
 	for _, e := range registry {
@@ -37,7 +43,7 @@ func TestPaneKeysDoNotCollideWithGlobalKeys(t *testing.T) {
 			continue
 		}
 		for _, k := range e.b.Keys() {
-			if g, ok := global[k]; ok {
+			if g, ok := global[k]; ok && !allowedPaneShadows[e.scope.title()+" "+k] {
 				t.Errorf("%s key %q (%s) collides with global %q", e.scope.title(), k, e.b.Help().Desc, g)
 			}
 		}
@@ -214,6 +220,12 @@ func TestFooterFollowsFocusAndJobState(t *testing.T) {
 	}
 	m.job = printJob{State: "printing", Filename: "a-rather-long-file-name.gcode", Progress: 0.4, Duration: 600}
 	_, job = footerHints(&m)
+	// c is Z down in Toolhead, so cancel isn't advertised there.
+	if strings.Join(job, "|") != "p pause" {
+		t.Fatalf("toolhead printing job hints = %q", job)
+	}
+	m.setFocus(focusFiles) // digits type a position in Toolhead
+	_, job = footerHints(&m)
 	if strings.Join(job, "|") != "p pause|c cancel" {
 		t.Fatalf("printing job hints = %q", job)
 	}
@@ -248,6 +260,152 @@ func TestToolheadButtons(t *testing.T) {
 	m, cmd := updateCmd(t, m, keyRunes("m"))
 	if cmd != nil || !logContains(m, "motors off only works when idle") {
 		t.Fatal("motors off allowed during a print")
+	}
+}
+
+// sentGcode runs a key's Cmd and returns the gcode it sent ("" if none).
+func sentGcode(t *testing.T, cmd tea.Cmd) string {
+	t.Helper()
+	if cmd == nil {
+		return ""
+	}
+	sent, ok := cmd().(gcodeSentMsg)
+	if !ok {
+		t.Fatalf("Cmd returned %T, not a gcode send", cmd())
+	}
+	return sent.cmd
+}
+
+func TestToolheadWASD(t *testing.T) {
+	srv := fakePrinter(t)
+	m := readyModel(t, srv)
+	m = update(t, m, keyRunes("2"))
+	step := m.steps[m.stepIndex]
+	for k, want := range map[string]string{
+		"w": fmt.Sprintf("G1 Y%g ", step), "s": fmt.Sprintf("G1 Y%g ", -step),
+		"a": fmt.Sprintf("G1 X%g ", -step), "d": fmt.Sprintf("G1 X%g ", step),
+		" ": fmt.Sprintf("G1 Z%g ", step), "c": fmt.Sprintf("G1 Z%g ", -step),
+	} {
+		msg := keyRunes(k)
+		if k == " " {
+			msg = tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")}
+		}
+		_, cmd := updateCmd(t, m, msg)
+		got := sentGcode(t, cmd)
+		if !strings.Contains(got, want) || !strings.Contains(got, "G91") || !strings.Contains(got, "RESTORE_GCODE_STATE") {
+			t.Errorf("%q sent %q, want %q", k, got, want)
+		}
+	}
+
+	// ← → change the step; they no longer jog.
+	i := m.stepIndex
+	m, cmd := updateCmd(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	if cmd != nil || m.stepIndex != i+1 {
+		t.Fatalf("→: step index %d (was %d), cmd %v", m.stepIndex, i, cmd != nil)
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyLeft})
+	if m.stepIndex != i {
+		t.Fatalf("←: step index %d, want %d", m.stepIndex, i)
+	}
+
+	// While printing: c jogs (refused), never arms cancel.
+	m.job.State = "printing"
+	m, cmd = updateCmd(t, m, keyRunes("c"))
+	if cmd != nil || m.confirmation != nil || !logContains(m, "not while printing") {
+		t.Fatalf("c while printing: cmd=%v confirmation=%v", cmd != nil, m.confirmation)
+	}
+	// Digits type a position here rather than jump panes.
+	m = update(t, m, keyRunes("1"))
+	if m.focus != focusJog || !m.thEditing {
+		t.Fatal("1 in Toolhead did not start typing")
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc}, tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.focus == focusJog {
+		t.Fatal("shift+tab did not leave Toolhead")
+	}
+	// From another pane, c is still cancel.
+	m = update(t, m, keyRunes("c"))
+	if m.confirmation == nil || !strings.Contains(m.confirmation.prompt, "Cancel") {
+		t.Fatal("c outside Toolhead did not arm cancel")
+	}
+	// Paused: moves are allowed again.
+	m.confirmation = nil
+	m.job.State = "paused"
+	m = update(t, m, keyRunes("2"))
+	if _, cmd = updateCmd(t, m, keyRunes("c")); cmd == nil {
+		t.Fatal("jog refused while paused")
+	}
+}
+
+func TestToolheadAbsoluteMove(t *testing.T) {
+	srv := fakePrinter(t)
+	m := readyModel(t, srv)
+	m.raw.merge("toolhead", map[string]any{
+		"homed_axes":   "xy",
+		"axis_minimum": []any{0.0, -5.0, 0.0, 0.0},
+		"axis_maximum": []any{235.0, 235.0, 250.0, 0.0},
+	})
+	m.raw.merge("gcode_move", map[string]any{
+		"gcode_position": []any{10.0, 20.0, 30.0, 0.0},
+		"homing_origin":  []any{0.0, 0.0, 0.0, 0.0},
+	})
+	m = update(t, m, keyRunes("2"))
+	if m.thCursor != thX {
+		t.Fatalf("cursor starts on %d", m.thCursor)
+	}
+	if !strings.Contains(m.renderJog(), "10.00") || !strings.Contains(m.renderJog(), "30.00") {
+		t.Fatalf("gcode position not shown:\n%s", m.renderJog())
+	}
+
+	// Typing starts an edit (digits don't jump panes here); enter moves.
+	m = update(t, m, keyRunes("1"), keyRunes("2"), keyRunes("0"))
+	if m.focus != focusJog || !m.thEditing || m.thInput.Value() != "120" {
+		t.Fatalf("focus=%v editing=%v value=%q", m.focus, m.thEditing, m.thInput.Value())
+	}
+	if !strings.Contains(m.renderJog(), "→ 120") {
+		t.Fatal("edit not shown in place")
+	}
+	m, cmd := updateCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	got := sentGcode(t, cmd)
+	if !strings.Contains(got, "G90\nG1 X120 F") || m.thEditing {
+		t.Fatalf("absolute move sent %q (editing=%v)", got, m.thEditing)
+	}
+
+	// Letters are refused while typing; esc cancels.
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}, keyRunes("5"), keyRunes("w"))
+	if m.thCursor != thY || m.thInput.Value() != "5" {
+		t.Fatalf("cursor %d value %q", m.thCursor, m.thInput.Value())
+	}
+	m, cmd = updateCmd(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil || m.thEditing {
+		t.Fatal("esc did not cancel")
+	}
+
+	// Out of range is refused, and so is an unhomed axis.
+	m = update(t, m, keyRunes("3"), keyRunes("0"), keyRunes("0"))
+	if m, cmd = updateCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil || !logContains(m, "Y 300 is outside -5 to 235") {
+		t.Fatal("out-of-range move not refused")
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}, keyRunes("5"))
+	if m, cmd = updateCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil || !logContains(m, "home Z first") {
+		t.Fatal("move on an unhomed axis not refused")
+	}
+	if !strings.Contains(m.renderJog(), "?") && !strings.Contains(m.renderJog(), "unhomed") {
+		t.Error("unhomed Z not marked")
+	}
+	if _, cmd = updateCmd(t, m, tea.KeyMsg{Type: tea.KeyPgUp}); cmd != nil {
+		t.Error("jog on an unhomed axis not refused")
+	}
+
+	// The step row takes a custom step for the session.
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyDown}, keyRunes("2"), keyRunes("."), keyRunes("5"), tea.KeyMsg{Type: tea.KeyEnter})
+	if m.thCursor != thStep || m.steps[m.stepIndex] != 2.5 {
+		t.Fatalf("custom step: cursor %d steps %v index %d", m.thCursor, m.steps, m.stepIndex)
+	}
+	m.raw.merge("toolhead", map[string]any{"homed_axes": "xyz"})
+	_, cmd = updateCmd(t, m, tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	if got := sentGcode(t, cmd); !strings.Contains(got, "G1 Z2.5 ") {
+		t.Fatalf("jog with custom step sent %q", got)
 	}
 }
 

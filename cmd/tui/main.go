@@ -84,6 +84,18 @@ type initMsg struct {
 // no per-field code. Views parse what they need from it on render.
 type rawObjects map[string]map[string]any
 
+// merge stores an object's reported fields over what's already there.
+func (r rawObjects) merge(name string, fields map[string]any) {
+	obj := r[name]
+	if obj == nil {
+		obj = map[string]any{}
+		r[name] = obj
+	}
+	for k, v := range fields {
+		obj[k] = v
+	}
+}
+
 // limits mirrors the kinematic-tuning fields shown in the tuning pane.
 // Populated from toolhead status updates (subset that Klipper exposes)
 // and edited by the user via SET_VELOCITY_LIMIT.
@@ -245,6 +257,11 @@ type model struct {
 	steps []float64
 	// Index into steps — easier to cycle than a free float.
 	stepIndex int
+
+	// Toolhead field cursor (thX…thStep) and the in-place edit.
+	thCursor  thField
+	thEditing bool
+	thInput   textinput.Model
 
 	// Current print job state (from print_stats).
 	job printJob
@@ -460,6 +477,7 @@ func initialModel(client *moonraker.Client) model {
 		focus:        focusFiles,
 		filters:      console.DefaultFilters,
 		tempInput:    newTempInput(),
+		thInput:      newToolheadInput(),
 		stepIndex:    -1, // applySettings picks the step nearest 10 mm
 		job:          printJob{State: "standby"},
 		connState:    stateConnected,
@@ -622,10 +640,13 @@ func (m model) initialize() tea.Cmd {
 		}
 
 		subMap["toolhead"] = []string{
-			"position",
+			"position", "homed_axes", "axis_minimum", "axis_maximum",
 			"max_velocity", "max_accel",
 			"square_corner_velocity", "minimum_cruise_ratio",
 		}
+		// gcode_move: the position in gcode coordinates (what G1 moves
+		// to, offsets applied) for the Toolhead pane's fields.
+		subMap["gcode_move"] = []string{"gcode_position", "homing_origin"}
 		subMap["print_stats"] = []string{"state", "filename", "print_duration"}
 		subMap["virtual_sdcard"] = []string{"progress"}
 		// webhooks carries Klippy's own state + message, so a
@@ -688,16 +709,9 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name):
+		case isAFCObject(name), name == "gcode_move":
 			// Generic: store every reported field as-is.
-			obj := raw[name]
-			if obj == nil {
-				obj = map[string]any{}
-				raw[name] = obj
-			}
-			for k, v := range fields {
-				obj[k] = v
-			}
+			raw.merge(name, fields)
 		case name == "webhooks":
 			if v, ok := fields["state"]; ok {
 				if s, ok := v.(string); ok {
@@ -710,6 +724,7 @@ func mergeStatus(
 				}
 			}
 		case name == "toolhead":
+			raw.merge(name, fields) // homed_axes, axis bounds (Toolhead pane)
 			if v, ok := fields["position"]; ok {
 				if arr, ok := v.([]any); ok {
 					for i := 0; i < 3 && i < len(arr); i++ {
@@ -1228,70 +1243,6 @@ func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// handleJogKey reacts to a keypress while the jog pane is focused.
-// Returns a Cmd that performs the (non-blocking) GcodeScript send, or
-// nil for keys that just adjust local UI state (step cycling).
-func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
-	step := m.steps[m.stepIndex]
-	switch {
-	case key.Matches(msg, *keys.JogX):
-		if msg.String() == "left" {
-			return m.sendJog("X", -step)
-		}
-		return m.sendJog("X", step)
-	case key.Matches(msg, *keys.JogY):
-		if msg.String() == "down" {
-			return m.sendJog("Y", -step)
-		}
-		return m.sendJog("Y", step)
-	case key.Matches(msg, *keys.JogZ):
-		if msg.String() == "pgdown" {
-			return m.sendJog("Z", -step)
-		}
-		return m.sendJog("Z", step)
-	case key.Matches(msg, *keys.StepDown):
-		if m.stepIndex > 0 {
-			m.stepIndex--
-		}
-	case key.Matches(msg, *keys.StepUp):
-		if m.stepIndex < len(m.steps)-1 {
-			m.stepIndex++
-		}
-	case key.Matches(msg, *keys.HomeAll):
-		return m.requireConnected("home", m.sendGcode("G28"))
-	case key.Matches(msg, *keys.HomeX):
-		return m.requireConnected("home X", m.sendGcode("G28 X"))
-	case key.Matches(msg, *keys.HomeY):
-		return m.requireConnected("home Y", m.sendGcode("G28 Y"))
-	case key.Matches(msg, *keys.HomeZ):
-		return m.requireConnected("home Z", m.sendGcode("G28 Z"))
-	case key.Matches(msg, *keys.MotorsOff):
-		if ok, why := whileIdle(m); !ok {
-			m.appendLog("!! motors off only works " + why)
-			return nil
-		}
-		return m.requireConnected("motors off", m.sendGcode("M84"))
-	}
-	return nil
-}
-
-// sendJog emits a relative move on a single axis, wrapping it in
-// SAVE/RESTORE_GCODE_STATE so we leave the printer in absolute mode
-// regardless of what it was in before.
-func (m *model) sendJog(axis string, delta float64) tea.Cmd {
-	feed := m.cfg.Toolhead.XY()
-	if axis == "Z" {
-		feed = m.cfg.Toolhead.Z()
-	}
-	script := strings.Join([]string{
-		"SAVE_GCODE_STATE NAME=_ui_movement",
-		"G91",
-		fmt.Sprintf("G1 %s%g F%d", axis, delta, feed),
-		"RESTORE_GCODE_STATE NAME=_ui_movement",
-	}, "\n")
-	return m.requireConnected("jog", m.sendGcode(script))
-}
-
 func (m *model) submitCommand() tea.Cmd {
 	text := strings.TrimSpace(m.input.Value())
 	m.input.SetValue("")
@@ -1805,72 +1756,6 @@ func (m model) paneTitle(f focusArea) string {
 		}
 	}
 	return t
-}
-
-// renderJog produces the contents of the jog pane: an XY directional
-// pad, Z controls, the active step size, and the current toolhead
-// position.
-func (m model) renderJog() string {
-	contentW := m.layout.w(focusJog) - panelInnerXReserve()
-	if contentW < 10 {
-		contentW = 10
-	}
-
-	pos := jogPosStyle.Render(fmt.Sprintf(
-		"X %8.2f\nY %8.2f\nZ %8.2f",
-		m.position[0], m.position[1], m.position[2],
-	))
-
-	pad := jogPadStyle.Render(lipgloss.JoinVertical(lipgloss.Center,
-		"  ↑  ",
-		"← + →",
-		"  ↓  ",
-	))
-	pad = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, pad)
-
-	step := jogStepStyle.Render(fmt.Sprintf("step  %g mm", m.steps[m.stepIndex]))
-	step = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, step)
-
-	// Every Toolhead action is on screen with its key — the pane has
-	// no hidden controls. Motors-off dims while printing.
-	motors := "m motors off"
-	if ok, _ := whileIdle(&m); !ok {
-		motors = "m motors off (idle)"
-	}
-	hints := []string{
-		"PgUp/Dn Z   [ ] step",
-		"H home   x y z axis",
-		motors,
-	}
-	// Narrower panes get the same keys with tighter wording, always
-	// 3 lines (jogContentMin depends on it). Full text is in ? help.
-	idle, _ := whileIdle(&m)
-	switch {
-	case contentW >= 21:
-	case contentW >= 18:
-		motors = "m motors off"
-		if !idle {
-			motors = "m off (idle)"
-		}
-		hints = []string{"PgUp/Dn Z [ ] step", "H home xyz axis", motors}
-	default:
-		motors = "m off  ? keys"
-		if !idle {
-			motors = "? all keys" // motors off is unavailable while printing
-		}
-		hints = []string{"PgUp/Dn Z  [ ]", "H home  x y z", motors}
-	}
-	hint := jogHintStyle.Render(strings.Join(hints, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		pos,
-		"",
-		pad,
-		"",
-		step,
-		"",
-		hint,
-	)
 }
 
 // ---------------------------------------------------------------------------

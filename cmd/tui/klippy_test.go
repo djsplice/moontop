@@ -60,10 +60,13 @@ func readyModel(t *testing.T, srv *moonrakertest.Server) model {
 	return m
 }
 
-func update(t *testing.T, m model, msg tea.Msg) model {
+func update(t *testing.T, m model, msgs ...tea.Msg) model {
 	t.Helper()
-	out, _ := m.Update(msg)
-	return out.(model)
+	for _, msg := range msgs {
+		out, _ := m.Update(msg)
+		m = out.(model)
+	}
+	return m
 }
 
 func updateCmd(t *testing.T, m model, msg tea.Msg) (model, tea.Cmd) {
