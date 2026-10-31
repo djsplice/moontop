@@ -188,7 +188,7 @@ func TestExtruderWithoutToolsOrPA(t *testing.T) {
 
 func TestBottomRowStacksWhenConsoleWouldBeTooNarrow(t *testing.T) {
 	in := defaultLayoutInput(100, 40, 3)
-	in.hidden = map[focusArea]bool{} // AFC and Extruder shown
+	in.hidden = map[focusArea]bool{focusMacros: true, focusOutputs: true} // AFC and Extruder shown
 	in.afcLines, in.extLines = 6, 7
 	if l := computeLayout(in); l.mode != layoutStacked {
 		t.Fatalf("100 cols with AFC + Extruder: mode %v", l.mode)

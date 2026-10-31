@@ -35,6 +35,7 @@ const (
 	scopeTuning
 	scopeExtruder
 	scopeOutputs
+	scopeMacros
 	scopeTemps
 	scopeTempEdit
 	scopeConsole
@@ -60,6 +61,8 @@ func (s keyScope) title() string {
 		return "Extruder"
 	case scopeOutputs:
 		return "Outputs (fans, pins, LEDs)"
+	case scopeMacros:
+		return "Macros (pinned; F3 or g lists all)"
 	case scopeTuning:
 		return "Tuning"
 	case scopeTemps:
@@ -112,6 +115,7 @@ var keys = struct {
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
 	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract       *key.Binding
 	OutputOff, LEDColor                                                  *key.Binding
+	Macros, MacroMove, MacroRun, MacroUnpin                              *key.Binding
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
 	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
 	ConsoleSend, ConsoleHistory                                          *key.Binding
@@ -124,8 +128,9 @@ var keys = struct {
 	Setup:        bind([]string{"f2", ","}, "F2/,", "setup: panes, heaters, filters, presets, safety"),
 	NextPane:     bind([]string{"tab"}, "tab", "next pane"),
 	PrevPane:     bind([]string{"shift+tab"}, "shift+tab", "previous pane"),
-	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7", "8"}, "1–8", "jump to pane by number"),
+	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}, "1–9", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
+	Macros:       bind([]string{"f3", "g"}, "F3/g", "macros: all of them, filter, run, pin"),
 
 	Pause:  bind([]string{"p"}, "p", "pause print"),
 	Resume: bind([]string{"r"}, "r", "resume print"),
@@ -169,6 +174,9 @@ var keys = struct {
 	FieldEdit:   bind([]string{"enter"}, "enter", "edit the selected row"),
 	Extrude:     bind([]string{"+", "="}, "+", "extrude the length at the speed"),
 	Retract:     bind([]string{"-"}, "-", "retract the length at the speed"),
+	MacroMove:   bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select a pinned macro"),
+	MacroRun:    bind([]string{"enter"}, "enter", "run it (a form first when it takes parameters)"),
+	MacroUnpin:  bind([]string{"x"}, "x", "unpin it from this pane"),
 	OutputOff:   bind([]string{"x"}, "x", "turn the selected fan, pin or LED off"),
 	LEDColor:    bind([]string{"o"}, "o", "set the selected LED's colour (hex)"),
 
@@ -236,6 +244,7 @@ func whileIdle(m *model) (bool, string) {
 var registry = []keyEntry{
 	{b: keys.Help, scope: scopeGlobal, footer: true},
 	{b: keys.Setup, scope: scopeGlobal},
+	{b: keys.Macros, scope: scopeGlobal},
 	{b: keys.EStop, scope: scopeGlobal, footer: true},
 	{b: keys.NextPane, scope: scopeGlobal, footer: true},
 	{b: keys.PrevPane, scope: scopeGlobal},
@@ -283,6 +292,11 @@ var registry = []keyEntry{
 	{b: keys.FieldAdjust, scope: scopeExtruder, short: "adjust", footer: true},
 	{b: keys.FieldType, scope: scopeExtruder, short: "type"},
 	{b: keys.FieldEdit, scope: scopeExtruder},
+
+	{b: keys.MacroMove, scope: scopeMacros, short: "select", footer: true},
+	{b: keys.MacroRun, scope: scopeMacros, short: "run", footer: true},
+	{b: keys.MacroUnpin, scope: scopeMacros, short: "unpin", footer: true},
+	{b: keys.Macros, scope: scopeMacros, short: "all macros", footer: true},
 
 	{b: keys.FieldMove, scope: scopeOutputs, short: "row", footer: true},
 	{b: keys.FieldAdjust, scope: scopeOutputs, short: "adjust", footer: true},
@@ -339,6 +353,8 @@ func paneScope(f focusArea) keyScope {
 		return scopeExtruder
 	case focusOutputs:
 		return scopeOutputs
+	case focusMacros:
+		return scopeMacros
 	}
 	return scopeGlobal
 }

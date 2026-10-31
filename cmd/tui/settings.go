@@ -87,6 +87,9 @@ func (m *model) hiddenPanes() map[focusArea]bool {
 	if len(m.outputs) == 0 {
 		h[focusOutputs] = true
 	}
+	if len(m.macros) == 0 {
+		h[focusMacros] = true
+	}
 	for _, f := range paneOrder {
 		if m.cfg.Panes.PaneHidden(paneName(f)) {
 			h[f] = true
@@ -122,6 +125,7 @@ func (m *model) layoutInput(reservedRows int) layoutInput {
 	in.afcLines = afcPaneLines(m.afcModel())
 	in.extLines = extruderContentLines(m)
 	in.outLines = outputsContentLines(m)
+	in.macroLines = macrosContentLines(m)
 	return in
 }
 

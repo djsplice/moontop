@@ -98,14 +98,30 @@ type layoutInput struct {
 	afcLines     int // AFC pane content lines (lanes + summary)
 	extLines     int // Extruder pane content lines
 	outLines     int // Outputs pane content lines
+	macroLines   int // Macros pane content lines
+}
+
+// contentLines is a bottom pane's content height.
+func (in layoutInput) contentLines(f focusArea) int {
+	switch f {
+	case focusAFC:
+		return in.afcLines
+	case focusExtruder:
+		return in.extLines
+	case focusOutputs:
+		return in.outLines
+	case focusMacros:
+		return in.macroLines
+	}
+	return 0
 }
 
 // The bottom row: columns beside the console, left to right, each at
 // its natural width; panes in one column stack (Extruder over Outputs).
 // bottomPanes is their Tab and stacking order.
 var (
-	bottomColumns = [][]focusArea{{focusAFC}, {focusExtruder, focusOutputs}}
-	bottomPanes   = []focusArea{focusAFC, focusExtruder, focusOutputs}
+	bottomColumns = [][]focusArea{{focusAFC, focusMacros}, {focusExtruder, focusOutputs}}
+	bottomPanes   = []focusArea{focusAFC, focusMacros, focusExtruder, focusOutputs}
 )
 
 // Bottom-row widths: AFC is 46 columns (at most a third of the row,
@@ -300,8 +316,8 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 
 	// Bottom row: the columns at their natural widths beside the
 	// console, as tall as the space below the top row. In a column of
-	// two, the first pane (Extruder) gets its content height and the
-	// second (Outputs) the rest. With the console hidden, the columns
+	// two, the first pane (AFC, Extruder) gets its content height and
+	// the second (Macros, Outputs) the rest. With the console hidden, the columns
 	// share the row.
 	bottomH := availH - topRowH
 	consoleW := availW
@@ -327,7 +343,7 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 			l.boxW[f] = widths[col[0]]
 			l.boxH[f] = bottomH
 			if len(col) == 2 {
-				first := max(3, min(in.extLines+3, bottomH-5))
+				first := max(3, min(in.contentLines(col[0])+3, bottomH-5))
 				if i == 0 {
 					l.boxH[f] = first
 				} else {
@@ -363,13 +379,7 @@ func computeStacked(availW, availH int, top []focusArea, specs map[focusArea]pan
 		if in.hidden[f] {
 			continue
 		}
-		lines := in.afcLines
-		switch f {
-		case focusExtruder:
-			lines = in.extLines
-		case focusOutputs:
-			lines = in.outLines
-		}
+		lines := in.contentLines(f)
 		h := lines + 1 + 2 // content + title + borders
 		l.boxW[f] = availW
 		l.boxH[f] = h

@@ -22,6 +22,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, *keys.EStop) {
 		m.showHelp = false
 		m.setup.open = false
+		m.browser.open = false
+		m.macroForm = nil
 		return m, m.armEmergencyStop()
 	}
 
@@ -30,6 +32,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.quit()
 		}
 		return m, m.handleSetupKey(msg)
+	}
+
+	// The macro form and browser are full screens that own the keys.
+	if m.macroForm != nil {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleMacroFormKey(msg)
+	}
+	if m.browser.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleBrowserKey(msg)
 	}
 
 	if m.showHelp {
@@ -119,6 +135,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, *keys.Setup):
 			m.openSetup()
 			return m, nil
+		case key.Matches(msg, *keys.Macros):
+			m.openBrowser()
+			return m, nil
 		case key.Matches(msg, *keys.NextPane):
 			m.cycleFocus(1)
 			return m, nil
@@ -164,6 +183,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleExtruderKey(msg)
 	case focusOutputs:
 		return m, m.handleOutputsKey(msg)
+	case focusMacros:
+		return m, m.handleMacrosKey(msg)
 	}
 	return m, nil
 }

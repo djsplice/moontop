@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/bubbles/key"
 	"strings"
 	"testing"
 
@@ -29,9 +30,11 @@ var allowedPaneShadows = map[string]bool{
 
 func TestPaneKeysDoNotCollideWithGlobalKeys(t *testing.T) {
 	global := map[string]string{}
+	globalBinding := map[*key.Binding]bool{}
 	for _, e := range registry {
 		switch e.scope {
 		case scopeGlobal, scopeJob, scopeKlipper:
+			globalBinding[e.b] = true
 			for _, k := range e.b.Keys() {
 				global[k] = e.b.Help().Desc
 			}
@@ -41,6 +44,9 @@ func TestPaneKeysDoNotCollideWithGlobalKeys(t *testing.T) {
 		switch e.scope {
 		case scopeGlobal, scopeJob, scopeKlipper, scopeHelp:
 			continue
+		}
+		if globalBinding[e.b] {
+			continue // a global key repeated as a pane's footer hint (F3)
 		}
 		for _, k := range e.b.Keys() {
 			if g, ok := global[k]; ok && !allowedPaneShadows[e.scope.title()+" "+k] {
@@ -82,7 +88,7 @@ func TestPaneJumpsAndShiftTab(t *testing.T) {
 	// Jump to every pane from Files. (From Tuning or the console,
 	// digits are text, so jump from a non-text pane each time.)
 	for i, want := range paneOrder {
-		if want == focusAFC || want == focusOutputs {
+		if want == focusAFC || want == focusOutputs || want == focusMacros {
 			continue // no AFC or outputs on this fake printer
 		}
 		m.setFocus(focusFiles)
@@ -119,8 +125,8 @@ func TestPaneTitlesAreNumbered(t *testing.T) {
 	m := readyModel(t, srv)
 	v := m.View()
 	for i, f := range paneOrder {
-		if f == focusAFC || f == focusOutputs {
-			if strings.Contains(v, "6 AFC") || strings.Contains(v, "8 Outputs") {
+		if f == focusAFC || f == focusOutputs || f == focusMacros {
+			if strings.Contains(v, "6 AFC") || strings.Contains(v, "8 Outputs") || strings.Contains(v, "9 Macros") {
 				t.Error("AFC or Outputs drawn on a printer without them")
 			}
 			continue

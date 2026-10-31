@@ -173,6 +173,14 @@ func panesItems(m *model) []setupItem {
 			toggle: toggle("AFC"),
 		})
 	}
+	if len(m.macros) > 0 {
+		items = append(items, setupItem{
+			label:  fmt.Sprintf("%d Macros", paneNumber(focusMacros)),
+			note:   "pinned macros; F3 lists all",
+			check:  checked(!m.cfg.Panes.PaneHidden("Macros")),
+			toggle: toggle("Macros"),
+		})
+	}
 	items = append(items, setupItem{
 		label:  fmt.Sprintf("%d Extruder", paneNumber(focusExtruder)),
 		note:   "beside the console",

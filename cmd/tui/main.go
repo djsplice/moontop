@@ -30,6 +30,7 @@ import (
 
 	"github.com/justinh-rahb/moonraker-tui/internal/config"
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
+	"github.com/justinh-rahb/moonraker-tui/internal/macros"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
 
@@ -76,6 +77,7 @@ type initMsg struct {
 	klippy   klippyStatus
 	raw      rawObjects
 	outputs  []output
+	macros   []macros.Macro
 	err      error
 }
 
@@ -215,6 +217,7 @@ const (
 	focusAFC
 	focusExtruder
 	focusOutputs
+	focusMacros
 )
 
 // ---------------------------------------------------------------------------
@@ -258,8 +261,14 @@ type model struct {
 	extFields  fieldList
 	outFields  fieldList
 	outputs    []output // fans, pins, LEDs (Outputs pane), from init
-	extLen     float64
-	extSpeed   float64
+
+	// Macros (pane, browser, parameter form), from init.
+	macros      []macros.Macro
+	macroCursor int
+	browser     macroBrowser
+	macroForm   *macroForm
+	extLen      float64
+	extSpeed    float64
 
 	// Console log lines; viewport content is rebuilt from this on append.
 	logLines []string
@@ -446,6 +455,7 @@ func initialModel(client *moonraker.Client) model {
 		tuneFields: newFieldList(),
 		extFields:  newFieldList(),
 		outFields:  newFieldList(),
+		browser:    macroBrowser{filter: newMacroFilter()},
 		extLen:     10,
 		extSpeed:   5,
 		focus:      focusFiles,
@@ -635,20 +645,22 @@ func (m model) initialize() tea.Cmd {
 		// order are config, not status: read configfile once (it's large,
 		// so only when there's a pin or LED to describe).
 		var settings map[string]any
+		needSettings := false
 		for _, name := range objects {
 			if o, ok := classifyOutput(name); ok {
 				subMap[name] = outputSubscription(o)
-				if (o.kind == outPin || o.kind == outLED) && settings == nil {
-					settings = map[string]any{}
-					if cf, err := client.QueryObjects(map[string][]string{"configfile": {"settings"}}); err == nil {
-						if st, ok := cf.Objects["configfile"]["settings"].(map[string]any); ok {
-							settings = st
-						}
-					}
-				}
+				needSettings = needSettings || o.kind == outPin || o.kind == outLED
+			}
+			// Macro parameters live in their templates (configfile).
+			needSettings = needSettings || strings.HasPrefix(name, "gcode_macro ")
+		}
+		if needSettings {
+			if cf, err := client.QueryObjects(map[string][]string{"configfile": {"settings"}}); err == nil {
+				settings, _ = cf.Objects["configfile"]["settings"].(map[string]any)
 			}
 		}
 		outputs := discoverOutputs(objects, settings)
+		macroList := macros.List(objects, settings)
 
 		// AFC (Armored Turtle's AFC-Klipper-Add-On): every object, every
 		// field — the set varies by unit type and version, and the AFC
@@ -677,7 +689,7 @@ func (m model) initialize() tea.Cmd {
 		raw := rawObjects{}
 		mergeStatus(sensors, &position, &job, &lim, &klippy, raw, initial.Objects)
 
-		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy, raw: raw, outputs: outputs}
+		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy, raw: raw, outputs: outputs, macros: macroList}
 	}
 }
 
@@ -830,6 +842,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sensorNames = sortedKeys(msg.sensors)
 		m.raw = msg.raw
 		m.outputs = msg.outputs
+		m.macros = msg.macros
 		m.applySettings()
 		m.position = msg.position
 		m.job = msg.job
@@ -985,7 +998,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paneOrder is the visual and Tab order; pane numbers (1–5) index it.
-var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC, focusExtruder, focusOutputs}
+var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC, focusExtruder, focusOutputs, focusMacros}
 
 func paneNumber(f focusArea) int {
 	for i, p := range paneOrder {
@@ -1006,7 +1019,7 @@ func (m *model) cycleFocus(delta int) {
 			order = append(order, f)
 		}
 	}
-	order = append(order, bottomPanes...) // bottom row: AFC, Extruder, Outputs, then console
+	order = append(order, bottomPanes...) // bottom row: AFC, Macros, Extruder, Outputs, then console
 	order = append(order, focusConsole)
 	n := len(order)
 	idx := 0
@@ -1415,6 +1428,12 @@ func (m model) View() string {
 	if m.showHelp {
 		return m.renderHelp()
 	}
+	if m.macroForm != nil {
+		return m.renderMacroForm()
+	}
+	if m.browser.open {
+		return m.renderBrowser()
+	}
 	if m.layout.mode == layoutMinimal {
 		return renderMinimal(m.width, m.height)
 	}
@@ -1423,6 +1442,7 @@ func (m model) View() string {
 		focusAFC:      m.renderAFC,
 		focusExtruder: m.renderExtruder,
 		focusOutputs:  m.renderOutputs,
+		focusMacros:   m.renderMacros,
 		focusTable:    m.table.View,
 		focusJog:      m.renderJog,
 		focusFiles:    m.renderFiles,
@@ -1588,6 +1608,8 @@ func paneName(f focusArea) string {
 		return "Extruder"
 	case focusOutputs:
 		return "Outputs"
+	case focusMacros:
+		return "Macros"
 	}
 	return "?"
 }

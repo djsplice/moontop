@@ -15,6 +15,16 @@ const (
 type Printer struct {
 	Temperatures Temperatures `json:"temperatures"`
 	Presets      []Preset     `json:"presets,omitempty"`
+	// Macros pinned to the dashboard's Macros pane, sorted.
+	Macros []string `json:"macros,omitempty"`
+}
+
+// MacroPinned reports whether a macro is on the Macros pane.
+func (p *Printer) MacroPinned(name string) bool { return contains(p.Macros, name) }
+
+// SetMacroPinned pins or unpins a macro (the list stays sorted).
+func (p *Printer) SetMacroPinned(name string, pinned bool) {
+	p.Macros = setMember(p.Macros, name, pinned)
 }
 
 // Preset is a Moontop preheat preset: heater object → target °C, plus
@@ -48,7 +58,7 @@ func (p *Printer) EffectiveTemperatures(file Temperatures) Temperatures {
 
 // HasSettings reports whether anything is stored for this printer.
 func (p *Printer) HasSettings() bool {
-	return len(p.Temperatures.Hidden) > 0 || len(p.Temperatures.Rename) > 0 || len(p.Presets) > 0
+	return len(p.Temperatures.Hidden) > 0 || len(p.Temperatures.Rename) > 0 || len(p.Presets) > 0 || len(p.Macros) > 0
 }
 
 // Hidden reports whether object is hidden in t.

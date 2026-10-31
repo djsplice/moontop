@@ -30,6 +30,13 @@ edges. Single-printer, single-host, no auth, no persistence.
   output pins (`SET_PIN`; a percentage when PWM, on/off when digital, in
   the pin's own units when scaled) and LEDs (`SET_LED`; brightness, and
   a hex colour). Objects named `_something` are hidden, as in Mainsail.
+- **Macros** — every `gcode_macro` the printer has, with its description
+  and the parameters its template reads (`params.X|default(…)`, found
+  the way Mainsail finds them). `F3` (or `g`) opens a browser of all of
+  them: type to filter, `Enter` runs, `space` pins it to the Macros
+  pane, which shows only pinned macros (saved per printer in Moonraker's
+  database). A macro with parameters opens a form first; only the
+  fields you fill in are sent, so its own defaults apply to the rest.
 - **Files** — gcode file list from the `gcodes` root, sorted by mtime,
   filterable, with y/n confirmation to start a print.
 - **Console** — send arbitrary gcode, live response stream, up/down
@@ -135,7 +142,8 @@ now. The footer shows the focused pane's main keys.
 
 Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 `4` Temperatures, `5` Console, `6` AFC (only on printers with AFC),
-`7` Extruder, `8` Outputs (only on printers with fans, pins or LEDs).
+`7` Extruder, `8` Outputs (only on printers with fans, pins or LEDs),
+`9` Macros (only on printers with macros).
 
 | Key | Action |
 | --- | ------ |
@@ -154,6 +162,8 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | Files | `↑↓` or `j k` select, `/` filter, `Enter` print (confirms) |
 | Toolhead | `w a s d` jog Y+ X− Y− X+, `space` jog Z up, `c` jog Z down (`PgUp/PgDn` too), `↑↓` select X / Y / Z / step, type a number (or `Enter`) to edit it in place — `Enter` moves there (absolute) or uses that step, `Esc` cancels; `← →` or `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
 | Tuning | `↑↓` or `j k` select a row; `← →` adjust it at once by its step (speed 5 %, flow 1 %, Z offset 0.01 mm, velocity 10, accel 500; `shift` ×10); type a number (or `Enter`) to edit it in place, `Enter` sets it, `Esc` cancels |
+| `F3` / `g` | Macro browser: type to filter, `↑↓` select, `Enter` run, `space` pin / unpin, `Esc` clears the filter, then closes |
+| Macros | `↑↓` select a pinned macro, `Enter` run (a parameter form first when it takes parameters: `↑↓` / `Tab` field, `Enter` run, `Esc` cancel), `x` unpin |
 | Outputs | `↑↓` select, `← →` adjust (5 %; LEDs 10 % brightness; digital pins on/off), type a value, `x` off, `o` LED colour (hex) |
 | Extruder | `+` extrude, `-` retract (length at speed), `↑↓` select a row, `← →` adjust (length and speed step through presets; pressure advance by 0.005), type to set; on the Tool row type the tool number and `Enter` to change tools |
 | Temperatures | `↑↓` or `j k` select, `Enter` set the target in place (type °C, `Enter` sends, `Esc` cancels), `t` preheat preset, `x` selected heater off, `X` all heaters off |
@@ -189,8 +199,8 @@ Layout: the top row holds Files, Toolhead, Tuning and Temperatures in
 your order; panes with a width share split the spare width (Files 1,
 Temperatures 2 by default), the others keep their natural width. The
 console runs along the bottom, either taking what the top row doesn't
-need or a fixed percentage, with AFC (when present) and a column of
-Extruder over Outputs to its left. Tab follows the on-screen order; the pane numbers stay with the
+need or a fixed percentage, with a column of AFC over Macros and a
+column of Extruder over Outputs to its left. Tab follows the on-screen order; the pane numbers stay with the
 pane. Below about 98 columns, when the panes' minimum widths don't fit,
 or when the console would be narrower than 40 columns, everything stacks
 in the same order.
