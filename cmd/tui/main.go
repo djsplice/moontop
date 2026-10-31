@@ -14,11 +14,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/table"
@@ -43,7 +45,15 @@ var sensorPrefixes = []string{
 	"temperature_fan",
 }
 
+// extruderHeater matches Klipper's extruder heaters: "extruder",
+// "extruder1", "extruder2"… (one per toolhead on a toolchanger like the
+// U1). It must not match "extruder_stepper …", which has no heater.
+var extruderHeater = regexp.MustCompile(`^extruder\d*$`)
+
 func isSensorObject(name string) bool {
+	if extruderHeater.MatchString(name) {
+		return true
+	}
 	for _, prefix := range sensorPrefixes {
 		if name == prefix || strings.HasPrefix(name, prefix+" ") {
 			return true
@@ -278,6 +288,19 @@ type model struct {
 
 	focus focusArea
 
+	// Temperatures table shows the State column only when it fits.
+	tableShowState bool
+
+	// Help overlay (UI-1): open flag and scroll offset.
+	showHelp   bool
+	helpScroll int
+
+	// Console filters. showFiltered reveals hidden lines (ctrl+o);
+	// hiddenCount is how many the current render hid.
+	filters      console.FilterSet
+	showFiltered bool
+	hiddenCount  int
+
 	width  int
 	height int
 
@@ -358,6 +381,7 @@ func initialModel(client *moonraker.Client) model {
 		progress:     prog,
 		tuningInputs: tuningInputs,
 		focus:        focusFiles,
+		filters:      console.DefaultFilters,
 		stepIndex:    2, // 10 mm
 		job:          printJob{State: "standby"},
 		connState:    stateConnected,
@@ -651,71 +675,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
-		// 0. E-stop arms from any pane (console included — ctrl+x
-		//    isn't a textinput binding) and replaces any other
-		//    pending prompt.
-		if msg.String() == "ctrl+x" {
-			m.armEmergencyStop()
-			return m, nil
-		}
-
-		// 1. Confirmation prompt intercepts first — when one is armed,
-		//    only y/n/esc are meaningful; everything else is swallowed.
-		if m.confirmation != nil {
-			switch msg.String() {
-			case "y", "Y":
-				cmd := m.confirmation.onYes
-				m.confirmation = nil
-				return m, m.requireConnected("action", cmd)
-			case "n", "N", "esc":
-				m.confirmation = nil
-			}
-			return m, nil
-		}
-
-		// 2. Global keys that fire regardless of focus.
-		switch msg.String() {
-		case "ctrl+c":
-			m.client.Close()
-			return m, tea.Quit
-		case "tab":
-			m.toggleFocus()
-			return m, nil
-		case "q":
-			// "q" quits only when the console isn't focused — otherwise
-			// the user could never type a literal 'q' into gcode.
-			if m.focus != focusConsole {
-				m.client.Close()
-				return m, tea.Quit
-			}
-		}
-
-		// 3. Global job controls. Skip while the console is capturing
-		//    text input — same rationale as the 'q' guard above.
-		if m.focus != focusConsole {
-			if cmd, handled := m.handleJobControl(msg); handled {
-				return m, cmd
-			}
-			if cmd, handled := m.handleKlippyControl(msg); handled {
-				return m, cmd
-			}
-		}
-
-		// Route the key to the focused sub-model / handler.
-		switch m.focus {
-		case focusConsole:
-			return m, m.handleConsoleKey(msg)
-		case focusTable:
-			var cmd tea.Cmd
-			m.table, cmd = m.table.Update(msg)
-			return m, cmd
-		case focusJog:
-			return m, m.handleJogKey(msg)
-		case focusFiles:
-			return m, m.handleFilesKey(msg)
-		case focusTuning:
-			return m, m.handleTuningKey(msg)
-		}
+		return m.handleKey(msg)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -739,6 +699,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.limits = msg.limits
 		m.ready = true
 		m.buildTable()
+		m.setFocus(m.focus) // the rebuilt table starts unfocused
 		m.resizeLayout()
 		m.rebuildRows()
 		m.refreshTuningInputs()
@@ -857,29 +818,45 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) toggleFocus() {
-	// Tab cycle matches the visual order: files → jog → tuning → table → console → files …
-	// Confirmation is now global (not files-pane-scoped), so Tab no
-	// longer needs to clear it — it survives focus changes intentionally.
-	leaving := m.focus
-	switch m.focus {
-	case focusFiles:
-		m.focus = focusJog
-	case focusJog:
-		m.focus = focusTuning
-		m.setInnerFocus(0)
-	case focusTuning:
-		m.focus = focusTable
-	case focusTable:
-		m.focus = focusConsole
+// paneOrder is the visual and Tab order; pane numbers (1–5) index it.
+var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole}
+
+func paneNumber(f focusArea) int {
+	for i, p := range paneOrder {
+		if p == f {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// cycleFocus moves focus by delta panes (+1 = Tab, -1 = shift+Tab).
+func (m *model) cycleFocus(delta int) {
+	n := len(paneOrder)
+	idx := paneNumber(m.focus) - 1
+	m.setFocus(paneOrder[((idx+delta)%n+n)%n])
+}
+
+// setFocus is the one place focus changes, so every widget's own
+// focus state (cursor drawn, keys accepted) follows the pane focus.
+// Confirmations survive focus changes intentionally.
+func (m *model) setFocus(f focusArea) {
+	m.focus = f
+	if f == focusConsole {
 		m.input.Focus()
-	case focusConsole:
-		m.focus = focusFiles
+	} else {
 		m.input.Blur()
 	}
-	// Leaving the tuning pane: blur the active textinput so its cursor
-	// stops blinking elsewhere on screen.
-	if leaving == focusTuning {
+	// The table only draws its cursor row and accepts keys while
+	// focused — it was never focused before UI-1.
+	if f == focusTable {
+		m.table.Focus()
+	} else {
+		m.table.Blur()
+	}
+	if f == focusTuning {
+		m.setInnerFocus(m.tuningFocus)
+	} else {
 		for i := range m.tuningInputs {
 			m.tuningInputs[i].Blur()
 		}
@@ -968,14 +945,14 @@ func (m *model) setInnerFocus(idx tuningField) {
 // pane cycling.
 func (m *model) handleTuningKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
-	case "up":
+	case "up", "k":
 		next := m.tuningFocus - 1
 		if next < 0 {
 			next = tuningFieldCount - 1
 		}
 		m.setInnerFocus(next)
 		return nil
-	case "down":
+	case "down", "j":
 		next := m.tuningFocus + 1
 		if int(next) >= int(tuningFieldCount) {
 			next = 0
@@ -1050,18 +1027,18 @@ type tuningAppliedMsg struct{ err error }
 // routing). Returns (_, false) when the key isn't a job-control key
 // at all.
 func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "p":
+	switch {
+	case key.Matches(msg, *keys.Pause):
 		if m.job.State == "printing" {
 			return m.requireConnected("pause", m.pausePrint()), true
 		}
 		return nil, true
-	case "r":
+	case key.Matches(msg, *keys.Resume):
 		if m.job.State == "paused" {
 			return m.requireConnected("resume", m.resumePrint()), true
 		}
 		return nil, true
-	case "c":
+	case key.Matches(msg, *keys.Cancel):
 		if jobActive(m.job.State) {
 			m.confirmation = &pendingConfirmation{
 				prompt: "Cancel current print?",
@@ -1078,29 +1055,44 @@ func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 // nil for keys that just adjust local UI state (step cycling).
 func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 	step := jogStepSizes[m.stepIndex]
-	switch msg.String() {
-	case "left":
-		return m.sendJog("X", -step)
-	case "right":
+	switch {
+	case key.Matches(msg, *keys.JogX):
+		if msg.String() == "left" {
+			return m.sendJog("X", -step)
+		}
 		return m.sendJog("X", step)
-	case "up":
+	case key.Matches(msg, *keys.JogY):
+		if msg.String() == "down" {
+			return m.sendJog("Y", -step)
+		}
 		return m.sendJog("Y", step)
-	case "down":
-		return m.sendJog("Y", -step)
-	case "pgup":
+	case key.Matches(msg, *keys.JogZ):
+		if msg.String() == "pgdown" {
+			return m.sendJog("Z", -step)
+		}
 		return m.sendJog("Z", step)
-	case "pgdown":
-		return m.sendJog("Z", -step)
-	case "[":
+	case key.Matches(msg, *keys.StepDown):
 		if m.stepIndex > 0 {
 			m.stepIndex--
 		}
-	case "]":
+	case key.Matches(msg, *keys.StepUp):
 		if m.stepIndex < len(jogStepSizes)-1 {
 			m.stepIndex++
 		}
-	case "H":
+	case key.Matches(msg, *keys.HomeAll):
 		return m.requireConnected("home", m.sendGcode("G28"))
+	case key.Matches(msg, *keys.HomeX):
+		return m.requireConnected("home X", m.sendGcode("G28 X"))
+	case key.Matches(msg, *keys.HomeY):
+		return m.requireConnected("home Y", m.sendGcode("G28 Y"))
+	case key.Matches(msg, *keys.HomeZ):
+		return m.requireConnected("home Z", m.sendGcode("G28 Z"))
+	case key.Matches(msg, *keys.MotorsOff):
+		if ok, why := whileIdle(m); !ok {
+			m.appendLog("!! motors off only works " + why)
+			return nil
+		}
+		return m.requireConnected("motors off", m.sendGcode("M84"))
 	}
 	return nil
 }
@@ -1206,9 +1198,14 @@ func (m *model) appendLog(line string) {
 // line by kind (errors red, echoes muted, ...). logLines stay unstyled
 // so classification never has to see through ANSI codes.
 func (m *model) refreshConsole() {
-	styled := make([]string, len(m.logLines))
-	for i, l := range m.logLines {
-		styled[i] = styleConsoleLine(l)
+	styled := make([]string, 0, len(m.logLines))
+	m.hiddenCount = 0
+	for _, l := range m.logLines {
+		if !m.showFiltered && m.filters.Hides(l) {
+			m.hiddenCount++
+			continue
+		}
+		styled = append(styled, styleConsoleLine(l))
 	}
 	m.viewport.SetContent(strings.Join(styled, "\n"))
 	m.viewport.GotoBottom()
@@ -1230,6 +1227,9 @@ func (m *model) buildTable() {
 		table.WithColumns(columns),
 		table.WithFocused(false),
 	)
+	// Matches the four columns above until setTableColumns resizes;
+	// rows must always have as many cells as there are columns.
+	m.tableShowState = true
 
 	s := table.DefaultStyles()
 	s.Header = s.Header.
@@ -1261,19 +1261,7 @@ func (m *model) resizeLayout() {
 		return
 	}
 
-	// Reserve 8 cols for bubbles/table's internal cell padding (1 char
-	// each side × 4 columns) so the Target header doesn't wrap.
-	const cellPadTotal = 8
-	nameW := m.layout.tableContentW - cellPadTotal - 30
-	if nameW < 12 {
-		nameW = 12
-	}
-	m.table.SetColumns([]table.Column{
-		{Title: "Name", Width: nameW},
-		{Title: "State", Width: 10},
-		{Title: "Current", Width: 10},
-		{Title: "Target", Width: 10},
-	})
+	m.setTableColumns()
 
 	// Data rows inside the table widget: outer pane height - title(1)
 	// - table-header(1) - borders(2).
@@ -1298,6 +1286,40 @@ func (m *model) resizeLayout() {
 	m.files.SetSize(m.layout.filesContentW, m.layout.filesContentH)
 }
 
+// setTableColumns sizes the Temperatures columns to the pane. The State
+// column only restates whether Target is above zero, so it's the first
+// to go when the pane is narrow (UI-3 makes the column set configurable).
+// bubbles/table cells carry 1 column of padding on each side.
+func (m *model) setTableColumns() {
+	const (
+		minNameW = 12
+		valueW   = 9 // "168.1°C"
+		stateW   = 9 // "heating"
+	)
+	w := m.layout.tableContentW
+	m.tableShowState = w >= minNameW+3*valueW+4*2
+	cols := 3
+	fixed := 2 * valueW
+	if m.tableShowState {
+		cols, fixed = 4, 2*valueW+stateW
+	}
+	nameW := w - fixed - cols*2
+	if nameW < minNameW {
+		nameW = minNameW
+	}
+	columns := []table.Column{{Title: "Name", Width: nameW}}
+	if m.tableShowState {
+		columns = append(columns, table.Column{Title: "State", Width: stateW})
+	}
+	columns = append(columns,
+		table.Column{Title: "Current", Width: valueW},
+		table.Column{Title: "Target", Width: valueW})
+	// Rows must never have more cells than columns while switching.
+	m.table.SetRows(nil)
+	m.table.SetColumns(columns)
+	m.rebuildRows()
+}
+
 func (m *model) rebuildRows() {
 	rows := make([]table.Row, 0, len(m.sensorNames))
 	for _, name := range m.sensorNames {
@@ -1306,12 +1328,12 @@ func (m *model) rebuildRows() {
 		if s.Target == 0 && !hasTarget(name) {
 			targetStr = "—"
 		}
-		rows = append(rows, table.Row{
-			friendlyName(name),
-			s.stateLabel(),
-			fmt.Sprintf("%.1f°C", s.Current),
-			targetStr,
-		})
+		row := table.Row{friendlyName(name)}
+		if m.tableShowState {
+			row = append(row, s.stateLabel())
+		}
+		row = append(row, fmt.Sprintf("%.1f°C", s.Current), targetStr)
+		rows = append(rows, row)
 	}
 	m.table.SetRows(rows)
 }
@@ -1355,40 +1377,43 @@ func (m model) View() string {
 	if !m.ready {
 		return m.renderNotReady()
 	}
+	if m.showHelp {
+		return m.renderHelp()
+	}
 	if m.layout.mode == layoutMinimal {
 		return renderMinimal(m.width, m.height)
 	}
 
 	tablePane := renderPanel(
-		"Temperatures",
+		m.paneTitle(focusTable),
 		m.table.View(),
 		m.focus == focusTable,
 		m.layout.tableBoxW,
 		paneHeight(m.layout, focusTable),
 	)
 	jogPane := renderPanel(
-		"Toolhead",
+		m.paneTitle(focusJog),
 		m.renderJog(),
 		m.focus == focusJog,
 		m.layout.jogBoxW,
 		paneHeight(m.layout, focusJog),
 	)
 	filesPane := renderPanel(
-		"Files",
+		m.paneTitle(focusFiles),
 		m.renderFiles(),
 		m.focus == focusFiles,
 		m.layout.filesBoxW,
 		paneHeight(m.layout, focusFiles),
 	)
 	tuningPane := renderPanel(
-		"Tuning",
+		m.paneTitle(focusTuning),
 		m.renderTuning(),
 		m.focus == focusTuning,
 		m.layout.tuningBoxW,
 		paneHeight(m.layout, focusTuning),
 	)
 	consolePane := renderPanel(
-		"Console",
+		m.paneTitle(focusConsole),
 		m.viewport.View()+"\n"+m.input.View(),
 		m.focus == focusConsole,
 		m.layout.consoleBoxW,
@@ -1410,7 +1435,7 @@ func (m model) View() string {
 	if m.job.State == "printing" {
 		barView = m.progress.View()
 	}
-	footer := renderFooter(m.focus, m.job, barView, m.renderConnView())
+	footer := m.fitFooter(barView)
 
 	out := title + "\n"
 	if m.klippy.bannerVisible() {
@@ -1464,6 +1489,89 @@ func (m model) renderTuning() string {
 	return strings.Join(lines, "\n")
 }
 
+// fitFooter renders the footer to fit the terminal: drop the focused
+// pane's hints from the end; then go compact (tighter separators, no
+// pane name) and drop hints again; then shorten the filename. Help,
+// E-stop, job state and job keys always stay; everything dropped is
+// still in the ? overlay.
+func (m model) fitFooter(barView string) string {
+	paneKeys, jobKeys := footerHints(&m)
+	job := m.job
+	compact := false
+	join := func(items []string) string {
+		if compact {
+			return strings.Join(items, " · ")
+		}
+		return strings.Join(items, "  •  ")
+	}
+	for {
+		f := renderFooter(paneName(m.focus), join(paneKeys), join(jobKeys), job, barView, m.renderConnView(), compact)
+		over := lipgloss.Width(f) - m.width
+		if m.width <= 0 || over <= 0 {
+			return f
+		}
+		if len(paneKeys) > 0 {
+			paneKeys = paneKeys[:len(paneKeys)-1]
+			continue
+		}
+		if !compact {
+			compact = true
+			paneKeys, _ = footerHints(&m) // retry with hints, compactly
+			continue
+		}
+		// Last resort: shorten the filename (never below 12 runes).
+		name := []rune(job.Filename)
+		keep := len(name) - over - 1
+		if keep < 12 || len(name) <= 12 {
+			return f
+		}
+		job.Filename = ellipsizeMiddle(job.Filename, keep)
+	}
+}
+
+// ellipsizeMiddle shortens s to n runes with "…" in the middle, so a
+// filename keeps both its start and its extension.
+func ellipsizeMiddle(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n || n < 3 {
+		return s
+	}
+	tail := (n - 1) / 2
+	head := n - 1 - tail
+	return string(r[:head]) + "…" + string(r[len(r)-tail:])
+}
+
+// paneName is a pane's plain name; paneTitle adds its jump number and,
+// for the console, how many lines filters are hiding.
+func paneName(f focusArea) string {
+	switch f {
+	case focusFiles:
+		return "Files"
+	case focusJog:
+		return "Toolhead"
+	case focusTuning:
+		return "Tuning"
+	case focusTable:
+		return "Temperatures"
+	case focusConsole:
+		return "Console"
+	}
+	return "?"
+}
+
+func (m model) paneTitle(f focusArea) string {
+	t := fmt.Sprintf("%d %s", paneNumber(f), paneName(f))
+	if f == focusConsole {
+		switch {
+		case m.showFiltered:
+			t += " · showing filtered lines (ctrl+o hides)"
+		case m.hiddenCount > 0:
+			t += fmt.Sprintf(" · %d hidden (ctrl+o shows)", m.hiddenCount)
+		}
+	}
+	return t
+}
+
 // paneHeight returns the outer height for a given pane in the current
 // layout — wide mode shares one top-row height, stacked mode has
 // per-pane heights.
@@ -1492,8 +1600,8 @@ func paneHeight(l layout, f focusArea) int {
 // position.
 func (m model) renderJog() string {
 	contentW := m.layout.jogBoxW - panelInnerXReserve()
-	if contentW < 16 {
-		contentW = 16
+	if contentW < 10 {
+		contentW = 10
 	}
 
 	pos := jogPosStyle.Render(fmt.Sprintf(
@@ -1511,11 +1619,36 @@ func (m model) renderJog() string {
 	step := jogStepStyle.Render(fmt.Sprintf("step  %g mm", jogStepSizes[m.stepIndex]))
 	step = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, step)
 
-	hint := jogHintStyle.Render(strings.Join([]string{
-		"PgUp/PgDn  Z ±",
-		"[ / ]      step",
-		"H          home",
-	}, "\n"))
+	// Every Toolhead action is on screen with its key — the pane has
+	// no hidden controls. Motors-off dims while printing.
+	motors := "m motors off"
+	if ok, _ := whileIdle(&m); !ok {
+		motors = "m motors off (idle)"
+	}
+	hints := []string{
+		"PgUp/Dn Z   [ ] step",
+		"H home   x y z axis",
+		motors,
+	}
+	// Narrower panes get the same keys with tighter wording, always
+	// 3 lines (jogContentMin depends on it). Full text is in ? help.
+	idle, _ := whileIdle(&m)
+	switch {
+	case contentW >= 21:
+	case contentW >= 18:
+		motors = "m motors off"
+		if !idle {
+			motors = "m off (idle)"
+		}
+		hints = []string{"PgUp/Dn Z [ ] step", "H home xyz axis", motors}
+	default:
+		motors = "m off  ? keys"
+		if !idle {
+			motors = "? all keys" // motors off is unavailable while printing
+		}
+		hints = []string{"PgUp/Dn Z  [ ]", "H home  x y z", motors}
+	}
+	hint := jogHintStyle.Render(strings.Join(hints, "\n"))
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		pos,

@@ -116,35 +116,52 @@ output to every connection.
 
 ## Keybindings
 
-Global:
+Press `?` (or `F1`) in the dashboard for the full list. It's generated
+from the same keymap the app uses, and shows which keys apply right
+now. The footer shows the focused pane's main keys.
 
-| Key      | Action                                                  |
-| -------- | ------------------------------------------------------- |
-| `Tab`    | Cycle focus: Files → Toolhead → Tuning → Temps → Console |
-| `Ctrl+C` | Quit                                                    |
-| `q`      | Quit (when console is not focused)                      |
-| `p`      | Pause active print                                      |
-| `r`      | Resume paused print                                     |
-| `c`      | Cancel active print (confirms)                          |
-| `Ctrl+X` | Emergency stop (confirms; works from every pane)        |
-| `K`      | Restart Klipper (confirms; not in console)              |
-| `F`      | Firmware restart (confirms; not in console)             |
-| `y`/`n`  | Answer a confirmation prompt                            |
+Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
+`4` Temperatures, `5` Console.
 
-Per pane, when focused:
+| Key | Action |
+| --- | ------ |
+| `1`–`5`, `Tab` / `Shift+Tab` | Jump to a pane / next / previous |
+| `?` / `F1` | Help: every key, grouped by pane |
+| `Ctrl+X` | Emergency stop (confirms; works everywhere) |
+| `q` / `F10` / `Ctrl+C` | Quit |
+| `p` / `r` / `c` | Pause / resume / cancel the print (cancel confirms) |
+| `K` / `F` | Restart Klipper / firmware restart (confirm) |
+| `Ctrl+O` | Show or hide filtered console lines |
+| `y` / `n` / `Esc` | Answer a confirmation prompt |
 
-- **Files**: `↑/↓` select, `/` filter, `Enter` start (confirms)
-- **Toolhead**: `←/→` jog X, `↑/↓` jog Y, `PgUp/PgDn` jog Z,
-  `[`/`]` step −/+, `H` home all
-- **Tuning**: `↑/↓` move between fields, type a value,
-  `Enter` apply changed fields
-- **Console**: type gcode, `Enter` send, `↑/↓` history recall
+| Pane | Keys |
+| ---- | ---- |
+| Files | `↑↓` or `j k` select, `/` filter, `Enter` print (confirms) |
+| Toolhead | `←→` jog X, `↑↓` jog Y, `PgUp/PgDn` jog Z, `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
+| Tuning | `↑↓` or `j k` select field, type a value, `Enter` apply changed fields |
+| Temperatures | `↑↓` or `j k` select a heater or sensor |
+| Console | type gcode, `Enter` send, `↑↓` history |
+
+While the console, a file filter or a Tuning field is taking text,
+printable keys type text (so `q` or `1` in a filename or gcode is just
+text); ctrl-keys, F-keys, `Tab` and arrows still work.
+
+### Console filters
+
+Klipper's heat-wait temperature reports (`B:26.3 /0.0 T0:168.1 /140.0`
+every second during `M109`/`M190`) and TMC `Run Current:` reports are
+hidden by default in the dashboard and `moontop console`; the console
+shows how many lines are hidden, and `Ctrl+O` shows them. `moontop gcode`
+prints raw output unless given `-filter`. Klipper errors (`!!`) are
+never hidden.
 
 ## Project layout
 
 ```
 cmd/tui/                the moontop binary
   cli.go                subcommand dispatch, `moontop gcode`
+  keys.go               keymap registry: every key, its scope and help
+  help.go               key routing and the ? help overlay
   repl.go               `moontop console` (inline Bubbletea program)
   cmds.go               client Cmds shared by dashboard and console
   main.go               dashboard model, Update, View
@@ -153,7 +170,7 @@ cmd/tui/                the moontop binary
                         e-stop / restarts, banner, console styling
   theme.go              colors and styles
 internal/console/       shared by all three modes: line classification,
-                        history, backfill, one-shot gcode runner
+                        filters, history, backfill, one-shot gcode runner
 internal/moonraker/     JSON-RPC over websocket client
   client.go             connection lifecycle, read loop, reconnect
   api.go                typed RPC methods
@@ -161,6 +178,7 @@ internal/moonraker/     JSON-RPC over websocket client
   moonrakertest/        fake Moonraker server for tests
 cmd/moonraker-test/     ad-hoc client smoke test
 docs/ROADMAP.md         Mainsail gap audit and phase plan
+docs/UI-PLAN.md         controls and configurability plan (UI-1 to UI-3)
 ```
 
 The client owns the websocket and forwards every server notification

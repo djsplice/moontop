@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -246,5 +247,34 @@ func TestReplCompletionsFromGcodeHelp(t *testing.T) {
 	m, _ = replUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
 	if !strings.EqualFold(m.input.Value(), "BED_MESH_CALIBRATE") {
 		t.Fatalf("tab completed to %q", m.input.Value())
+	}
+}
+
+func TestReplFiltersAndRedundancy(t *testing.T) {
+	srv := moonrakertest.New(t)
+	m := newTestRepl(t, srv)
+	if strings.Contains(m.input.Placeholder, "ctrl+d") {
+		t.Error("placeholder repeats the quit hint from the status line")
+	}
+	params := []json.RawMessage{json.RawMessage(`"B:26.3 /0.0 T0:168.1 /140.0\necho: Nozzle cleared"`)}
+	print, _ := m.handleNotification(notificationMsg{Method: moonraker.MethodGcodeResponse, Params: params})
+	out := printed(collect(print))
+	if strings.Contains(out, "T0:168.1") || !strings.Contains(out, "Nozzle cleared") {
+		t.Fatalf("printed %q", out)
+	}
+	if m.hidden != 1 || !strings.Contains(m.statusLine(), "1 hidden (ctrl+o)") {
+		t.Fatalf("hidden=%d status=%q", m.hidden, m.statusLine())
+	}
+	m, _ = replUpdate(t, m, tea.KeyMsg{Type: tea.KeyCtrlO})
+	print, _ = m.handleNotification(notificationMsg{Method: moonraker.MethodGcodeResponse, Params: params})
+	if !strings.Contains(printed(collect(print)), "T0:168.1") {
+		t.Fatal("ctrl+o did not show filtered lines")
+	}
+
+	// The live marker no longer repeats the host.
+	m2 := newTestRepl(t, srv)
+	_, cmd := replUpdate(t, m2, gcodeStoreMsg{})
+	if out := printed(collect(cmd)); !strings.Contains(out, "── live ──") || strings.Contains(out, srv.Host()) {
+		t.Fatalf("live marker %q", out)
 	}
 }

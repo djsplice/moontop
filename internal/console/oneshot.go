@@ -38,6 +38,10 @@ type Runner struct {
 	// Style, if set, decorates a line before printing (colour by Kind).
 	Style func(Kind, string) string
 
+	// Filter hides matching Klipper output; Hidden counts what it hid.
+	Filter FilterSet
+	Hidden int
+
 	last string // last line printed to Out, to avoid printing an error twice
 }
 
@@ -128,6 +132,10 @@ func (r *Runner) handle(n moonraker.Notification) {
 		return
 	}
 	for _, l := range strings.Split(msg, "\n") {
+		if r.Filter.Hides(l) {
+			r.Hidden++
+			continue
+		}
 		r.print(r.Out, l)
 	}
 }

@@ -100,6 +100,12 @@ type replModel struct {
 	// "!!" response isn't printed twice.
 	last string
 
+	// Console filters: on by default; ctrl+o toggles them for output
+	// from then on (lines already in scrollback can't be re-shown).
+	filters    console.FilterSet
+	showHidden bool
+	hidden     int
+
 	width    int
 	quitting bool
 }
@@ -113,7 +119,9 @@ type gcodeHelpMsg struct {
 func newReplModel(client *moonraker.Client, host string, hist *console.History, histPath string) replModel {
 	ti := textinput.New()
 	ti.Prompt = "> "
-	ti.Placeholder = "gcode — tab completes, ↑/↓ history, ctrl+d quits"
+	// Quitting and E-stop are on the status line; the placeholder
+	// only covers editing.
+	ti.Placeholder = "gcode — tab completes, ↑/↓ history"
 	ti.CharLimit = 1024
 	ti.ShowSuggestions = true
 	ti.PromptStyle = replPromptStyle
@@ -130,6 +138,7 @@ func newReplModel(client *moonraker.Client, host string, hist *console.History, 
 		input:    ti,
 		hist:     hist,
 		histPath: histPath,
+		filters:  console.DefaultFilters,
 	}
 }
 
@@ -156,6 +165,19 @@ func loadGcodeHelpCmd(client *moonraker.Client) tea.Cmd {
 		sort.Strings(cmds)
 		return gcodeHelpMsg{commands: cmds}
 	}
+}
+
+// printKlipper prints Klipper output, dropping lines the filters hide.
+func (m *replModel) printKlipper(lines ...string) tea.Cmd {
+	kept := lines[:0:0]
+	for _, l := range lines {
+		if !m.showHidden && m.filters.Hides(l) {
+			m.hidden++
+			continue
+		}
+		kept = append(kept, l)
+	}
+	return m.println(kept...)
 }
 
 // println returns a Cmd printing lines above the prompt, styled by kind,
@@ -216,9 +238,9 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			return m, m.println(console.ErrorLine(fmt.Errorf("console history: %w", msg.err)))
 		}
-		lines := console.BackfillLines(msg.entries)
-		lines = append(lines, console.PrefixNotice+"── live · "+m.host+" ──")
-		return m, m.println(lines...)
+		// The host is already on the status line.
+		print := m.printKlipper(console.BackfillLines(msg.entries)...)
+		return m, tea.Sequence(print, m.println(console.PrefixNotice+"── live ──"))
 
 	case gcodeHelpMsg:
 		if msg.err == nil {
@@ -293,7 +315,7 @@ func (m *replModel) handleNotification(n notificationMsg) (print, follow tea.Cmd
 		if err != nil {
 			return nil, nil
 		}
-		return m.println(strings.Split(line, "\n")...), nil
+		return m.printKlipper(strings.Split(line, "\n")...), nil
 	case moonraker.MethodKlippyReady:
 		// Same path as startup: re-check (which also reloads the
 		// completion list — macros may have changed with the config).
@@ -334,6 +356,12 @@ func (m replModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
+	case "ctrl+o":
+		m.showHidden = !m.showHidden
+		if m.showHidden {
+			return m, m.println(console.PrefixNotice + "showing filtered lines (ctrl+o hides them again)")
+		}
+		return m, m.println(console.PrefixNotice + "hiding filtered lines")
 	case "ctrl+c":
 		// Like a shell: clear the line first, quit on an empty one.
 		if m.input.Value() != "" {
@@ -451,6 +479,12 @@ func (m replModel) statusLine() string {
 			run += fmt.Sprintf(" (+%d queued)", m.inflight-1)
 		}
 		parts = append(parts, consoleCmdStyle.Render(run))
+	}
+	switch {
+	case m.showHidden:
+		parts = append(parts, consoleInfoStyle.Render("filters off (ctrl+o)"))
+	case m.hidden > 0:
+		parts = append(parts, consoleInfoStyle.Render(fmt.Sprintf("%d hidden (ctrl+o)", m.hidden)))
 	}
 	parts = append(parts, consoleInfoStyle.Render("ctrl+x e-stop  ctrl+d quit"))
 	line := strings.Join(parts, sep)

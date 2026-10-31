@@ -53,6 +53,10 @@ var (
 			Foreground(colorTextMuted).
 			MarginLeft(2)
 
+	// footerText is footerStyle without its line margin, for segments
+	// joined inside one footer line.
+	footerText = footerStyle.UnsetMarginLeft()
+
 	footerFocusStyle = lipgloss.NewStyle().
 				Foreground(colorTitle).
 				Bold(true)
@@ -73,6 +77,10 @@ var (
 	consoleInfoStyle   = lipgloss.NewStyle().Foreground(colorTextMuted)
 	consoleCmdStyle    = lipgloss.NewStyle().Foreground(colorAccentWarm)
 	consoleNoticeStyle = lipgloss.NewStyle().Foreground(colorOk)
+
+	// Help overlay.
+	helpGroupStyle = lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
+	helpKeyStyle   = lipgloss.NewStyle().Foreground(colorAccentWarm)
 
 	// Line console (`moontop console`) prompt.
 	replPromptStyle = lipgloss.NewStyle().Foreground(colorBorderFocused).Bold(true)

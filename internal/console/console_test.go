@@ -246,3 +246,48 @@ func TestRunnerStyle(t *testing.T) {
 		t.Fatalf("stdout = %q", out.String())
 	}
 }
+
+func TestDefaultFilters(t *testing.T) {
+	hidden := []string{
+		"B:26.3 /0.0 T0:168.1 /140.0",
+		"ok B:26.3 /0.0 T0:150.0 /140.0",
+		"T0:210.0 /210.0 T1:25.0 /0.0 B:60.0 /60.0",
+		"C:30.1 /0.0",
+		"// Run Current: 0.80A Hold Current: 0.80A",
+		"Run current set to 1.20A",
+	}
+	shown := []string{
+		"echo: Nozzle cleared",
+		"!! B:bad",
+		">>> M105",
+		"** reconnected",
+		"T0 selected",
+		"// Klipper state: Ready",
+		"Bed mesh loaded",
+	}
+	for _, l := range hidden {
+		if !console.DefaultFilters.Hides(l) {
+			t.Errorf("should hide %q", l)
+		}
+	}
+	for _, l := range shown {
+		if console.DefaultFilters.Hides(l) {
+			t.Errorf("should show %q", l)
+		}
+	}
+}
+
+func TestRunnerFilter(t *testing.T) {
+	srv := moonrakertest.New(t)
+	srv.Handle("printer.gcode.script", func(json.RawMessage) (any, error) {
+		srv.Notify(moonraker.MethodGcodeResponse, "B:26.3 /0.0 T0:168.1 /140.0")
+		srv.Notify(moonraker.MethodGcodeResponse, "echo: done")
+		return "ok", nil
+	})
+	r, out, _ := newRunner(t, srv)
+	r.Filter = console.DefaultFilters
+	r.Run("M109 S140")
+	if out.String() != "echo: done\n" || r.Hidden != 1 {
+		t.Fatalf("stdout %q hidden %d", out.String(), r.Hidden)
+	}
+}

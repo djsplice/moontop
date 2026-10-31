@@ -47,8 +47,10 @@ Usage:
 -host defaults to $MOONRAKER_HOST (Moonraker's port is usually 7125).
 
 gcode flags:
-  -echo   print each command before its output
-  -k      keep going after a failed command (default: stop)
+  -echo    print each command before its output
+  -k       keep going after a failed command (default: stop)
+  -filter  hide heat-wait temperature and TMC "Run Current" reports
+           (raw by default here; on by default in console and dashboard)
 
 gcode exits 0 when every command succeeded, 1 when any failed, 2 on
 usage or connection errors.
@@ -87,6 +89,7 @@ func runGcode(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	host := hostFlag(fs)
 	echo := fs.Bool("echo", false, "print each command before its output")
 	keepGoing := fs.Bool("k", false, "keep going after a failed command")
+	filter := fs.Bool("filter", false, "hide heat-wait temperature and TMC current reports")
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -119,6 +122,9 @@ func runGcode(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		Echo:      *echo,
 		KeepGoing: *keepGoing,
 		Style:     lineStyler(stdout),
+	}
+	if *filter {
+		r.Filter = console.DefaultFilters
 	}
 	var failed int
 	if len(cmds) > 0 {

@@ -97,6 +97,9 @@ Thirteen phases, each one working artifact plus one architectural concept. P0 wo
 | 13 | AFC panel: units, lanes (material, color, weight, loaded, mapped tool), active lane, load / unload / eject (eject confirms), AFC message line | **Object registry and printer state.** A registry each pane adds its objects to; one resent subscribe map; `mergeStatus` becomes a `printerState` struct with per-object handlers; dynamic objects (`AFC_lane <name>`, `AFC_hub`, `AFC_extruder`). Also the fake Moonraker test server every later phase uses | L |
 | 14 | Klippy lifecycle and safety: state banner, resubscribe on ready, restart / firmware restart, E-stop key, `!!` errors highlighted, console backfill, `server.connection.identify` | **Generic notification routing.** The client exposes one channel of method + params; one listener; a dispatch table in Update instead of a channel per notification type | M |
 | 14.5 | Line console and one-shot gcode: `moontop console` (inline prompt, persistent history, completion, Klippy status, E-stop) and `moontop gcode` (args or stdin, exit codes for scripts). Added from user feedback: "interactive access to the printer console from a basic terminal window" | **Inline programs and shared frontends.** `tea.Println` scrollback with `tea.Sequence` for ordering; line classification, history and backfill moved to `internal/console` so all three modes share them | S |
+| UI-1 | Discoverability: visible cursor in every pane, `1`–`5` pane jumps, `?` help overlay, footer from the keymap, console filters (heat-wait and TMC current reports hidden by default), console redundancy removed. See [UI-PLAN.md](UI-PLAN.md) | **Keymap as data.** One registry drives key handling, footer and help | M |
+| UI-2 | `F2` / `,` setup screen; show/hide panes and objects; renames; custom console filters; settings in `~/.config/moontop/config.toml` and Moonraker's database | **Config as model state** | M |
+| UI-3 | Pane order and sizes, configurable table columns, a layout that handles any set of panes | **A generic layout solver** | M |
 | 15 | Heater control: set targets from the temperature table, presets, cooldown | **Inline editing inside a table**, plus reading shared settings from the Moonraker database (presets stored by Mainsail, if present) | M |
 | 16 | Tool and live-print adjustments: T0–T3 select, extrude / retract, speed factor, flow, Z-offset babystep, pressure advance | **A reusable numeric stepper widget**, shared with Tuning and later panes | M |
 | 17 | Fans, LEDs, output pins | **Capability-driven rendering.** Controls built from object type and config (`fan`, `fan_generic`, `led`, `neopixel`, `output_pin` with PWM or not) rather than hard-coded rows | M |
@@ -115,6 +118,8 @@ Phases 13 and 15–17 depend on U1 object names. Before Phase 13, run this from 
 curl -s http://10.0.3.207:7125/printer/objects/list > testdata/objects.json
 curl -s "http://10.0.3.207:7125/printer/objects/query?AFC&toolhead&print_stats" > testdata/afc_query.json
 ```
+
+UI-1 to UI-3 come before Phase 13 (AFC), decided 2026-10-31: AFC adds a pane and many per-lane objects that need the same show/hide and selection machinery.
 
 Every phase keeps the existing rules: listener Cmds reissue themselves, sends are non-blocking `tea.Cmd`s, display comes from confirmed state, confirm-worthy actions go through the shared confirmation (the modal layer after Phase 19), and `go build`, `go vet` and tests stay green. New panes go in their own files; existing code moves only when a phase needs it.
 

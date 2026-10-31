@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -212,19 +213,18 @@ func (m *model) armEmergencyStop() {
 	}
 }
 
-// handleKlippyControl handles K / F (restart / firmware restart). Like
-// job controls, these only fire outside the console so typing gcode
-// isn't hijacked. Restarts kill an active print, hence the confirm.
+// handleKlippyControl handles K / F (restart / firmware restart).
+// Restarts kill an active print, hence the confirm.
 func (m *model) handleKlippyControl(msg tea.KeyMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "K":
+	switch {
+	case key.Matches(msg, *keys.Restart):
 		m.confirmation = &pendingConfirmation{
 			prompt: "Restart Klipper (RESTART)?",
 			onYes:  m.restartKlipper(),
 			danger: jobActive(m.job.State),
 		}
 		return nil, true
-	case "F":
+	case key.Matches(msg, *keys.FwRestart):
 		m.confirmation = &pendingConfirmation{
 			prompt: "Firmware restart (FIRMWARE_RESTART)?",
 			onYes:  m.firmwareRestart(),

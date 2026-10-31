@@ -293,32 +293,33 @@ func renderPanel(title, body string, focused bool, outerW, outerH int) string {
 // always-on global ones.
 // ---------------------------------------------------------------------------
 
-func renderFooter(f focusArea, job printJob, barView, connView string) string {
-	var paneName, paneKeys string
-	switch f {
-	case focusTable:
-		paneName = "Temperatures"
-		paneKeys = "↑/↓: select"
-	case focusConsole:
-		paneName = "Console"
-		paneKeys = "type gcode + enter to send"
-	case focusJog:
-		paneName = "Toolhead"
-		paneKeys = "arrows: jog XY  •  PgUp/PgDn: jog Z  •  [/]: step  •  H: home"
-	case focusFiles:
-		paneName = "Files"
-		paneKeys = "↑/↓: select  •  /: filter  •  enter: print"
-	case focusTuning:
-		paneName = "Tuning"
-		paneKeys = "↑/↓: field  •  enter: apply"
+// renderFooter draws the status line. compact uses tighter separators
+// and omits the pane name (the focused pane's border already shows it);
+// fitFooter switches to it when the full line doesn't fit.
+func renderFooter(paneName, paneKeys, jobKeys string, job printJob, barView, connView string, compact bool) string {
+	sepText := "  •  "
+	if compact {
+		sepText = " · "
 	}
-	conn := connView + footerStyle.Render("  •  ")
-	left := footerFocusStyle.Render(paneName)
-	mid := footerStyle.Render("  " + paneKeys)
-	jobText := renderJobSummary(job, barView)
-	jobKeys := footerStyle.Render(jobControlHints(job))
-	right := footerStyle.Render("  •  ctrl+x: e-stop  •  tab: next pane  •  ctrl+c: quit")
-	return lipgloss.NewStyle().MarginLeft(2).Render(conn + left + mid + jobText + jobKeys + right)
+	sep := footerText.Render(sepText)
+	out := connView
+	if !compact {
+		out += sep + footerFocusStyle.Render(paneName)
+		if paneKeys != "" {
+			out += footerText.Render("  " + paneKeys)
+		}
+	} else if paneKeys != "" {
+		out += sep + footerText.Render(paneKeys)
+	}
+	out += sep + renderJobSummary(job, barView)
+	if jobKeys != "" {
+		out += sep + footerText.Render(jobKeys)
+	}
+	// Always visible: the way to discover everything else, and the
+	// way to stop the machine.
+	out += sep + footerFocusStyle.Render("?") + footerText.Render(" help") +
+		sep + footerFocusStyle.Render("ctrl+x") + footerText.Render(" e-stop")
+	return lipgloss.NewStyle().MarginLeft(2).Render(out)
 }
 
 // renderConnIndicator renders the colored ●-prefixed connection state
@@ -336,20 +337,6 @@ func renderConnIndicator(label string, ok bool, warn bool) string {
 	return style.Render("● " + label)
 }
 
-// jobControlHints returns the state-conditional p/r/c hint segment
-// for the footer. Empty when no job is active so the footer stays
-// uncluttered during standby.
-func jobControlHints(job printJob) string {
-	switch job.State {
-	case "printing":
-		return "  •  p: pause  •  c: cancel"
-	case "paused":
-		return "  •  r: resume  •  c: cancel"
-	default:
-		return ""
-	}
-}
-
 // renderConfirmation displays a y/n prompt as a banner between the
 // body and the footer. Single source of truth for confirmation UI —
 // every action that arms m.confirmation shows up here, no per-pane
@@ -362,7 +349,7 @@ func renderConfirmation(prompt string, danger bool) string {
 	if danger {
 		q = dangerPromptStyle.Render("! " + prompt)
 	}
-	hint := footerStyle.Render("   y to confirm   •   n / esc to cancel")
+	hint := footerText.Render("   y to confirm   •   n / esc to cancel")
 	return lipgloss.NewStyle().MarginLeft(2).Render(q + hint)
 }
 
@@ -376,24 +363,23 @@ func renderConfirmation(prompt string, danger bool) string {
 // barView — that way layout.go stays free of the bubbles/progress
 // dependency.
 func renderJobSummary(job printJob, barView string) string {
-	bullet := footerStyle.Render("  •  ")
 	switch job.State {
 	case "printing":
 		pct := fmt.Sprintf("%d%%", int(job.Progress*100+0.5))
 		eta := formatETA(job.Duration, job.Progress)
-		head := footerStyle.Render(fmt.Sprintf("Printing: %s  ", job.Filename))
-		tail := footerStyle.Render(fmt.Sprintf("  %s  ETA %s", pct, eta))
-		return bullet + head + barView + tail
+		head := footerText.Render(fmt.Sprintf("Printing: %s  ", job.Filename))
+		tail := footerText.Render(fmt.Sprintf("  %s  ETA %s", pct, eta))
+		return head + barView + tail
 	case "paused":
-		return bullet + footerStyle.Render(fmt.Sprintf("Paused: %s", job.Filename))
+		return footerText.Render(fmt.Sprintf("Paused: %s", job.Filename))
 	case "complete":
-		return bullet + footerStyle.Render(fmt.Sprintf("Complete: %s", job.Filename))
+		return footerText.Render(fmt.Sprintf("Complete: %s", job.Filename))
 	case "error":
-		return bullet + footerStyle.Render(fmt.Sprintf("Error: %s", job.Filename))
+		return footerText.Render(fmt.Sprintf("Error: %s", job.Filename))
 	case "cancelled":
-		return bullet + footerStyle.Render(fmt.Sprintf("Cancelled: %s", job.Filename))
+		return footerText.Render(fmt.Sprintf("Cancelled: %s", job.Filename))
 	default:
-		return bullet + footerStyle.Render("Standby")
+		return footerText.Render("Standby")
 	}
 }
 
