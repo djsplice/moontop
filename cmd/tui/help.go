@@ -20,8 +20,15 @@ import (
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, *keys.EStop) {
 		m.showHelp = false
-		m.armEmergencyStop()
-		return m, nil
+		m.setup.open = false
+		return m, m.armEmergencyStop()
+	}
+
+	if m.setup.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleSetupKey(msg)
 	}
 
 	if m.showHelp {
@@ -84,6 +91,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showHelp = true
 			m.helpScroll = 0
 			return m, nil
+		case key.Matches(msg, *keys.Setup):
+			m.openSetup()
+			return m, nil
 		case key.Matches(msg, *keys.NextPane):
 			m.cycleFocus(1)
 			return m, nil
@@ -91,7 +101,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cycleFocus(-1)
 			return m, nil
 		case key.Matches(msg, *keys.JumpPane):
-			m.setFocus(paneOrder[int(msg.Runes[0]-'1')])
+			if f := paneOrder[int(msg.Runes[0]-'1')]; !m.hiddenPanes()[f] {
+				m.setFocus(f)
+			}
 			return m, nil
 		case key.Matches(msg, *keys.ToggleFilter):
 			m.showFiltered = !m.showFiltered

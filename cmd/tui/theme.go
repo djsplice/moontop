@@ -82,6 +82,9 @@ var (
 	helpGroupStyle = lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
 	helpKeyStyle   = lipgloss.NewStyle().Foreground(colorAccentWarm)
 
+	// Setup screen cursor.
+	setupCursorStyle = lipgloss.NewStyle().Foreground(colorBorderFocused).Bold(true)
+
 	// Line console (`moontop console`) prompt.
 	replPromptStyle = lipgloss.NewStyle().Foreground(colorBorderFocused).Bold(true)
 

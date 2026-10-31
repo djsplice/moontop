@@ -53,10 +53,10 @@ func canSetTarget(object string) bool {
 // selectedSensor returns the object name under the table cursor.
 func (m *model) selectedSensor() (string, bool) {
 	i := m.table.Cursor()
-	if i < 0 || i >= len(m.sensorNames) {
+	if i < 0 || i >= len(m.shownSensors) {
 		return "", false
 	}
-	return m.sensorNames[i], true
+	return m.shownSensors[i], true
 }
 
 func newTempInput() textinput.Model {
@@ -73,7 +73,7 @@ func (m *model) startTempEdit() {
 		return
 	}
 	if !canSetTarget(name) {
-		m.appendLog(fmt.Sprintf("!! %s is a sensor; it has no target", friendlyName(name)))
+		m.appendLog(fmt.Sprintf("!! %s is a sensor; it has no target", m.label(name)))
 		return
 	}
 	m.tempEdit = name
@@ -158,7 +158,7 @@ func (m *model) handleTempsKey(msg tea.KeyMsg) tea.Cmd {
 		if jobActive(m.job.State) {
 			cmd, _ := heaterCommand(name, 0)
 			m.confirmation = &pendingConfirmation{
-				prompt: fmt.Sprintf("Turn off %s during the print?", friendlyName(name)),
+				prompt: fmt.Sprintf("Turn off %s during the print?", m.label(name)),
 				onYes:  m.sendGcode(cmd),
 				danger: true,
 			}
@@ -205,6 +205,7 @@ type preset struct {
 	Name   string
 	Gcode  string
 	Values []presetValue // only enabled values, sorted by object
+	Source string        // "Moontop" or "Mainsail"
 }
 
 type presetValue struct {
@@ -298,7 +299,7 @@ func presetSummary(p preset) string {
 // prompt line.
 func (m *model) openPresetPicker() {
 	if len(m.presets) == 0 {
-		m.appendLog("!! no preheat presets: create them in Mainsail (Moontop's own presets come with the setup screen)")
+		m.appendLog("!! no preheat presets: save one in setup (F2 → Presets) or create them in Mainsail")
 		return
 	}
 	var opts []promptOption
@@ -310,6 +311,9 @@ func (m *model) openPresetPicker() {
 		label := p.Name
 		if s := presetSummary(p); s != "" {
 			label += " (" + s + ")"
+		}
+		if p.Source == "Mainsail" && len(m.printerCfg.Presets) > 0 {
+			label += " · Mainsail"
 		}
 		opts = append(opts, promptOption{
 			key:   strconv.Itoa(i + 1),

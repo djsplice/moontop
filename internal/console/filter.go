@@ -22,10 +22,12 @@ type FilterSet []Filter
 //   - TMC current reports: SET_TMC_CURRENT with no new value echoes
 //     "// Run Current: 0.80A Hold Current: 0.80A"; toolchanger macros
 //     (the U1's among them) call it on every tool change.
-var DefaultFilters = FilterSet{
-	{Name: "Heat-wait temperature reports", Pattern: regexp.MustCompile(`^(?:ok\s+)?(B|C|T\d*):`)},
-	{Name: "TMC run current reports", Pattern: regexp.MustCompile(`(?i)^(?://\s*)?run current`)},
-}
+var (
+	WaitTempFilter   = Filter{Name: "Heat-wait temperature reports", Pattern: regexp.MustCompile(`^(?:ok\s+)?(B|C|T\d*):`)}
+	RunCurrentFilter = Filter{Name: "TMC run current reports", Pattern: regexp.MustCompile(`(?i)^(?://\s*)?run current`)}
+
+	DefaultFilters = FilterSet{WaitTempFilter, RunCurrentFilter}
+)
 
 // Hides reports whether line should be hidden. Moontop's own lines
 // (command echoes, notices, errors) are never hidden.

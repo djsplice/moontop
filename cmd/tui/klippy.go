@@ -205,12 +205,29 @@ func (m model) firmwareRestart() tea.Cmd {
 
 // armEmergencyStop replaces any pending confirmation: E-stop must never
 // be blocked by a half-answered prompt for something else.
-func (m *model) armEmergencyStop() {
+// With confirmation turned off in setup (Safety), it fires at once.
+func (m *model) armEmergencyStop() tea.Cmd {
+	if !m.cfg.Safety.EStopConfirms() {
+		m.confirmation = nil
+		return m.requireConnected("emergency stop", m.emergencyStop())
+	}
 	m.confirmation = &pendingConfirmation{
 		prompt: "EMERGENCY STOP — halt the printer now?",
 		onYes:  m.emergencyStop(),
 		danger: true,
 	}
+	return nil
+}
+
+// confirmOrRun asks first during a print, or when idle restarts are set
+// to confirm (the default); otherwise it sends straight away.
+func (m *model) confirmOrRun(prompt, what string, cmd tea.Cmd) tea.Cmd {
+	active := jobActive(m.job.State)
+	if !active && !m.cfg.Safety.RestartConfirmsIdle() {
+		return m.requireConnected(what, cmd)
+	}
+	m.confirmation = &pendingConfirmation{prompt: prompt, onYes: cmd, danger: active}
+	return nil
 }
 
 // handleKlippyControl handles K / F (restart / firmware restart).
@@ -218,19 +235,9 @@ func (m *model) armEmergencyStop() {
 func (m *model) handleKlippyControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, *keys.Restart):
-		m.confirmation = &pendingConfirmation{
-			prompt: "Restart Klipper (RESTART)?",
-			onYes:  m.restartKlipper(),
-			danger: jobActive(m.job.State),
-		}
-		return nil, true
+		return m.confirmOrRun("Restart Klipper (RESTART)?", "restart", m.restartKlipper()), true
 	case key.Matches(msg, *keys.FwRestart):
-		m.confirmation = &pendingConfirmation{
-			prompt: "Firmware restart (FIRMWARE_RESTART)?",
-			onYes:  m.firmwareRestart(),
-			danger: jobActive(m.job.State),
-		}
-		return nil, true
+		return m.confirmOrRun("Firmware restart (FIRMWARE_RESTART)?", "firmware restart", m.firmwareRestart()), true
 	}
 	return nil, false
 }

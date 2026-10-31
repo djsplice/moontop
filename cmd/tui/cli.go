@@ -6,9 +6,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/justinh-rahb/moonraker-tui/internal/config"
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
@@ -45,12 +47,15 @@ Usage:
   … | moontop gcode [-host ip:port] [flags]  run gcode read from stdin, one per line
 
 -host defaults to $MOONRAKER_HOST (Moonraker's port is usually 7125).
+-config picks the settings file (default ~/.config/moontop/config.toml);
+press F2 in the dashboard to change settings.
 
 gcode flags:
   -echo    print each command before its output
   -k       keep going after a failed command (default: stop)
-  -filter  hide heat-wait temperature and TMC "Run Current" reports
-           (raw by default here; on by default in console and dashboard)
+  -filter  hide lines matched by your console filters (heat-wait
+           temperatures and TMC "Run Current" by default; raw output
+           unless given; filters are on in console and dashboard)
 
 gcode exits 0 when every command succeeded, 1 when any failed, 2 on
 usage or connection errors.
@@ -59,6 +64,32 @@ usage or connection errors.
 
 func hostFlag(fs *flag.FlagSet) *string {
 	return fs.String("host", "", "Moonraker host:port (default $MOONRAKER_HOST)")
+}
+
+func configFlag(fs *flag.FlagSet) *string {
+	return fs.String("config", "", "settings file (default ~/.config/moontop/config.toml)")
+}
+
+// loadConfig reads the settings file. On a parse error it warns and
+// returns defaults with an empty path, so a hand-edited file with a typo
+// is never overwritten by the setup screen.
+func loadConfig(flagPath string) (config.Config, string) {
+	path := flagPath
+	if path == "" {
+		p, err := config.DefaultPath()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "moontop: settings: %v (using defaults)\n", err)
+			return config.Config{}, ""
+		}
+		path = p
+	}
+	c, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "moontop: settings: %v\n  using defaults; fix the file to save settings again\n", err)
+		time.Sleep(1500 * time.Millisecond) // let it be read before the screen clears
+		return config.Config{}, ""
+	}
+	return *c, path
 }
 
 // resolveHost falls back to $MOONRAKER_HOST and explains when neither
@@ -89,7 +120,8 @@ func runGcode(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	host := hostFlag(fs)
 	echo := fs.Bool("echo", false, "print each command before its output")
 	keepGoing := fs.Bool("k", false, "keep going after a failed command")
-	filter := fs.Bool("filter", false, "hide heat-wait temperature and TMC current reports")
+	filter := fs.Bool("filter", false, "hide lines matched by the console filters in your settings")
+	cfgFlag := configFlag(fs)
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -124,7 +156,8 @@ func runGcode(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 		Style:     lineStyler(stdout),
 	}
 	if *filter {
-		r.Filter = console.DefaultFilters
+		cfg, _ := loadConfig(*cfgFlag)
+		r.Filter = buildFilters(cfg.Console)
 	}
 	var failed int
 	if len(cmds) > 0 {

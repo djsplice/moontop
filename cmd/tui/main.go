@@ -29,6 +29,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/justinh-rahb/moonraker-tui/internal/config"
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 )
@@ -65,11 +66,6 @@ func isSensorObject(name string) bool {
 // ---------------------------------------------------------------------------
 // Message types
 // ---------------------------------------------------------------------------
-
-// jogStepSizes mirror Mainsail's "Toolhead" step selector.
-var jogStepSizes = []float64{0.1, 1, 10, 25, 50, 100}
-
-const jogFeedrate = 1500 // mm/min, used for relative G1 moves
 
 // initMsg carries the snapshot from a successful subscribe. Klippy is
 // ready by construction (initialize only subscribes when it is).
@@ -236,7 +232,9 @@ type model struct {
 	// Toolhead position (X, Y, Z) as reported by the printer.
 	position [3]float64
 
-	// Index into jogStepSizes — easier to cycle than a free float.
+	// Jog step sizes (from settings) and the index of the active one.
+	steps []float64
+	// Index into steps — easier to cycle than a free float.
 	stepIndex int
 
 	// Current print job state (from print_stats).
@@ -287,6 +285,16 @@ type model struct {
 	confirmation *pendingConfirmation
 
 	focus focusArea
+
+	// Settings (UI-2): the file, its path ("" = don't save, e.g. it
+	// failed to parse), the printer's database entry, and what's
+	// derived from them by applySettings.
+	cfg             config.Config
+	cfgPath         string
+	printerCfg      config.Printer
+	mainsailPresets []preset
+	shownSensors    []string // sensorNames minus hidden ones, table order
+	setup           setupState
 
 	// Temperatures table shows the State column only when it fits.
 	tableShowState bool
@@ -380,7 +388,7 @@ func initialModel(client *moonraker.Client) model {
 		tuningInputs[i] = ti
 	}
 
-	return model{
+	m := model{
 		client:       client,
 		sensors:      make(map[string]*sensorState),
 		viewport:     vp,
@@ -391,10 +399,12 @@ func initialModel(client *moonraker.Client) model {
 		focus:        focusFiles,
 		filters:      console.DefaultFilters,
 		tempInput:    newTempInput(),
-		stepIndex:    2, // 10 mm
+		stepIndex:    -1, // applySettings picks the step nearest 10 mm
 		job:          printJob{State: "standby"},
 		connState:    stateConnected,
 	}
+	m.applySettings()
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -715,6 +725,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.klippy = msg.klippy
 		m.sensors = msg.sensors
 		m.sensorNames = sortedKeys(msg.sensors)
+		m.applySettings()
 		m.position = msg.position
 		m.job = msg.job
 		m.limits = msg.limits
@@ -725,13 +736,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildRows()
 		m.refreshTuningInputs()
 		m.klippyChanged()
-		// Presets may have changed with the config; re-read on every init.
-		return m, loadPresetsCmd(m.client)
+		// Presets and per-printer settings may have changed with the
+		// config; re-read both on every init.
+		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client))
 
 	case presetsMsg:
 		if msg.err == nil {
-			m.presets = msg.presets
+			m.mainsailPresets = msg.presets
 			m.cooldownGcode = msg.cooldown
+			m.applySettings()
+		}
+		return m, nil
+
+	case printerCfgMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! printer settings: %v", msg.err))
+			return m, nil
+		}
+		m.printerCfg = msg.cfg
+		m.applySettings()
+		m.rebuildRows()
+		return m, nil
+
+	case settingsSavedMsg:
+		if msg.err != nil {
+			m.setup.status = "!! " + msg.err.Error()
+			m.appendLog("!! saving settings: " + msg.err.Error())
+		} else {
+			m.setup.status = "saved to " + msg.where
 		}
 		return m, nil
 
@@ -864,7 +896,14 @@ func paneNumber(f focusArea) int {
 func (m *model) cycleFocus(delta int) {
 	n := len(paneOrder)
 	idx := paneNumber(m.focus) - 1
-	m.setFocus(paneOrder[((idx+delta)%n+n)%n])
+	hidden := m.hiddenPanes()
+	for i := 1; i <= n; i++ {
+		f := paneOrder[((idx+delta*i)%n+n)%n]
+		if !hidden[f] {
+			m.setFocus(f)
+			return
+		}
+	}
 }
 
 // setFocus is the one place focus changes, so every widget's own
@@ -1084,7 +1123,7 @@ func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 // Returns a Cmd that performs the (non-blocking) GcodeScript send, or
 // nil for keys that just adjust local UI state (step cycling).
 func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
-	step := jogStepSizes[m.stepIndex]
+	step := m.steps[m.stepIndex]
 	switch {
 	case key.Matches(msg, *keys.JogX):
 		if msg.String() == "left" {
@@ -1106,7 +1145,7 @@ func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 			m.stepIndex--
 		}
 	case key.Matches(msg, *keys.StepUp):
-		if m.stepIndex < len(jogStepSizes)-1 {
+		if m.stepIndex < len(m.steps)-1 {
 			m.stepIndex++
 		}
 	case key.Matches(msg, *keys.HomeAll):
@@ -1131,10 +1170,14 @@ func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 // SAVE/RESTORE_GCODE_STATE so we leave the printer in absolute mode
 // regardless of what it was in before.
 func (m *model) sendJog(axis string, delta float64) tea.Cmd {
+	feed := m.cfg.Toolhead.XY()
+	if axis == "Z" {
+		feed = m.cfg.Toolhead.Z()
+	}
 	script := strings.Join([]string{
 		"SAVE_GCODE_STATE NAME=_ui_movement",
 		"G91",
-		fmt.Sprintf("G1 %s%g F%d", axis, delta, jogFeedrate),
+		fmt.Sprintf("G1 %s%g F%d", axis, delta, feed),
 		"RESTORE_GCODE_STATE NAME=_ui_movement",
 	}, "\n")
 	return m.requireConnected("jog", m.sendGcode(script))
@@ -1286,7 +1329,7 @@ func (m *model) resizeLayout() {
 	if m.klippy.bannerVisible() {
 		reserved = 1
 	}
-	m.layout = computeLayout(m.width, m.height, len(m.sensorNames), reserved)
+	m.layout = computeLayout(m.width, m.height, len(m.shownSensors), reserved, m.hiddenPanes())
 	if m.layout.mode == layoutMinimal {
 		return
 	}
@@ -1367,14 +1410,14 @@ func (m *model) clampTableCursor() {
 }
 
 func (m *model) rebuildRows() {
-	rows := make([]table.Row, 0, len(m.sensorNames))
-	for _, name := range m.sensorNames {
+	rows := make([]table.Row, 0, len(m.shownSensors))
+	for _, name := range m.shownSensors {
 		s := m.sensors[name]
 		targetStr := fmt.Sprintf("%.1f°C", s.Target)
 		if s.Target == 0 && !hasTarget(name) {
 			targetStr = "—"
 		}
-		row := table.Row{friendlyName(name)}
+		row := table.Row{m.label(name)}
 		if m.tableShowState {
 			row = append(row, s.stateLabel())
 		}
@@ -1429,6 +1472,9 @@ func (m model) View() string {
 	if !m.ready {
 		return m.renderNotReady()
 	}
+	if m.setup.open {
+		return m.renderSetup()
+	}
 	if m.showHelp {
 		return m.renderHelp()
 	}
@@ -1472,13 +1518,28 @@ func (m model) View() string {
 		0, // auto-size to content
 	)
 
+	// Panes hidden in setup are left out entirely.
+	shown := func(fs ...focusArea) []string {
+		views := map[focusArea]string{focusFiles: filesPane, focusJog: jogPane, focusTuning: tuningPane, focusTable: tablePane, focusConsole: consolePane}
+		var out []string
+		for _, f := range fs {
+			if !m.layout.hidden[f] {
+				out = append(out, views[f])
+			}
+		}
+		return out
+	}
 	var stacked string
 	switch m.layout.mode {
 	case layoutWide:
-		top := lipgloss.JoinHorizontal(lipgloss.Top, filesPane, jogPane, tuningPane, tablePane)
-		stacked = lipgloss.JoinVertical(lipgloss.Left, top, consolePane)
+		rows := []string{}
+		if top := shown(focusFiles, focusJog, focusTuning, focusTable); len(top) > 0 {
+			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top...))
+		}
+		rows = append(rows, shown(focusConsole)...)
+		stacked = lipgloss.JoinVertical(lipgloss.Left, rows...)
 	default: // stacked
-		stacked = lipgloss.JoinVertical(lipgloss.Left, filesPane, jogPane, tuningPane, tablePane, consolePane)
+		stacked = lipgloss.JoinVertical(lipgloss.Left, shown(focusFiles, focusJog, focusTuning, focusTable, focusConsole)...)
 	}
 	body := bodyStyle.Render(stacked)
 
@@ -1668,7 +1729,7 @@ func (m model) renderJog() string {
 	))
 	pad = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, pad)
 
-	step := jogStepStyle.Render(fmt.Sprintf("step  %g mm", jogStepSizes[m.stepIndex]))
+	step := jogStepStyle.Render(fmt.Sprintf("step  %g mm", m.steps[m.stepIndex]))
 	step = lipgloss.PlaceHorizontal(contentW, lipgloss.Center, step)
 
 	// Every Toolhead action is on screen with its key — the pane has
@@ -1734,6 +1795,7 @@ func sortedKeys(m map[string]*sensorState) []string {
 func runDashboard(args []string) int {
 	fs := flag.NewFlagSet("moontop", flag.ContinueOnError)
 	host := hostFlag(fs)
+	cfgFlag := configFlag(fs)
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -1742,6 +1804,7 @@ func runDashboard(args []string) int {
 	if !ok {
 		return 2
 	}
+	cfg, cfgPath := loadConfig(*cfgFlag)
 
 	client, err := moonraker.New(h)
 	if err != nil {
@@ -1749,7 +1812,10 @@ func runDashboard(args []string) int {
 		return 2
 	}
 
-	p := tea.NewProgram(initialModel(client), tea.WithAltScreen())
+	m := initialModel(client)
+	m.cfg, m.cfgPath = cfg, cfgPath
+	m.applySettings()
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		log.Printf("TUI error: %v", err)
 		return 1

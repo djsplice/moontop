@@ -127,6 +127,7 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | --- | ------ |
 | `1`–`5`, `Tab` / `Shift+Tab` | Jump to a pane / next / previous |
 | `?` / `F1` | Help: every key, grouped by pane |
+| `F2` / `,` | Setup: panes, heaters, console filters, toolhead, safety, presets |
 | `Ctrl+X` | Emergency stop (confirms; works everywhere) |
 | `q` / `F10` / `Ctrl+C` | Quit |
 | `p` / `r` / `c` | Pause / resume / cancel the print (cancel confirms) |
@@ -146,6 +147,32 @@ While the console, a file filter or a Tuning field is taking text,
 printable keys type text (so `q` or `1` in a filename or gcode is just
 text); ctrl-keys, F-keys, `Tab` and arrows still work.
 
+### Setup and settings
+
+`F2` (or `,`) opens a setup screen modelled on htop's: categories on the
+left, their settings on the right; changes apply and save immediately.
+
+| Category | Settings | Saved to |
+| -------- | -------- | -------- |
+| Panes | Show or hide each pane; the others take its space | config file |
+| Temperatures | Hide sensors, rename heaters (`extruder1` → `T1 ASA`) | printer |
+| Console | Heat-wait and TMC filters on/off, your own regex filters | config file |
+| Toolhead | Jog step sizes, XY and Z feedrates | config file |
+| Safety | Confirm E-stop, confirm restarts when idle | config file |
+| Presets | Save the current heater targets as a preset; delete | printer |
+| Keys | Every key (read-only) | — |
+
+The config file is `~/.config/moontop/config.toml` (`$XDG_CONFIG_HOME`
+respected, `-config` to use another). It only stores what differs from
+the defaults, and is safe to edit by hand. If it fails to parse,
+Moontop warns, runs on defaults, and won't overwrite it until it's
+fixed.
+
+Per-printer settings are kept in the printer's Moonraker database
+(namespace `moontop`), so they follow the printer to any computer, the
+same way Mainsail's settings do. They take precedence over the same
+settings in the file.
+
 ### Heaters
 
 Targets are set in place: select a heater in Temperatures, press
@@ -156,11 +183,10 @@ Klipper reports it. Extruders, the bed and `heater_generic` use
 `SET_TEMPERATURE_FAN_TARGET`. Klipper rejects targets above a heater's
 `max_temp`, and the error shows in the console.
 
-`t` lists the preheat presets you've made in Mainsail (they live in
-Moonraker's database, so Moontop reads the same ones), and `X` runs
-Mainsail's cooldown gcode (`TURN_OFF_HEATERS` by default). Turning
-heaters off during a print asks first. Moontop's own presets come with
-the setup screen (UI-2).
+`t` lists your presets: Moontop's own (saved from setup) first, then
+any you made in Mainsail, which Moontop reads from the same Moonraker
+database. `X` runs Mainsail's cooldown gcode (`TURN_OFF_HEATERS` by
+default). Turning heaters off during a print asks first.
 
 ### Console filters
 
@@ -177,7 +203,9 @@ never hidden.
 cmd/tui/                the moontop binary
   cli.go                subcommand dispatch, `moontop gcode`
   keys.go               keymap registry: every key, its scope and help
-  heaters.go            heater targets, cooldown, Mainsail presets
+  heaters.go            heater targets, cooldown, presets
+  setup.go              the F2 setup screen
+  settings.go           applying and saving settings
   help.go               key routing and the ? help overlay
   repl.go               `moontop console` (inline Bubbletea program)
   cmds.go               client Cmds shared by dashboard and console
@@ -186,6 +214,7 @@ cmd/tui/                the moontop binary
   klippy.go             notification dispatch table, Klipper state,
                         e-stop / restarts, banner, console styling
   theme.go              colors and styles
+internal/config/        settings: config.toml and per-printer settings
 internal/console/       shared by all three modes: line classification,
                         filters, history, backfill, one-shot gcode runner
 internal/moonraker/     JSON-RPC over websocket client

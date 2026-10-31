@@ -90,21 +90,22 @@ func bind(keys []string, help, desc string) *key.Binding {
 
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
-	EStop, Quit, Help, NextPane, PrevPane, JumpPane, ToggleFilter *key.Binding
-	Pause, Resume, Cancel                                         *key.Binding
-	Restart, FwRestart                                            *key.Binding
-	Confirm, Deny, HelpScroll                                     *key.Binding
-	FilesMove, FilesFilter, FilesStart                            *key.Binding
-	JogX, JogY, JogZ, StepDown, StepUp                            *key.Binding
-	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                       *key.Binding
-	TuneMove, TuneEdit, TuneApply                                 *key.Binding
-	TempsMove, TempSet, TempOff, TempAllOff, TempPreset           *key.Binding
-	TempEditType, TempEditApply, TempEditCancel                   *key.Binding
-	ConsoleSend, ConsoleHistory                                   *key.Binding
+	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter *key.Binding
+	Pause, Resume, Cancel                                                *key.Binding
+	Restart, FwRestart                                                   *key.Binding
+	Confirm, Deny, HelpScroll                                            *key.Binding
+	FilesMove, FilesFilter, FilesStart                                   *key.Binding
+	JogX, JogY, JogZ, StepDown, StepUp                                   *key.Binding
+	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
+	TuneMove, TuneEdit, TuneApply                                        *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
+	ConsoleSend, ConsoleHistory                                          *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
 	Help:         bind([]string{"?", "f1"}, "?/F1", "help (this screen)"),
+	Setup:        bind([]string{"f2", ","}, "F2/,", "setup: panes, heaters, filters, presets, safety"),
 	NextPane:     bind([]string{"tab"}, "tab", "next pane"),
 	PrevPane:     bind([]string{"shift+tab"}, "shift+tab", "previous pane"),
 	JumpPane:     bind([]string{"1", "2", "3", "4", "5"}, "1–5", "jump to pane by number"),
@@ -167,7 +168,7 @@ func whileJobActive(m *model) (bool, string) {
 }
 
 func havePresets(m *model) (bool, string) {
-	return len(m.presets) > 0, "needs presets (made in Mainsail for now)"
+	return len(m.presets) > 0, "needs a preset (F2 → Presets, or Mainsail)"
 }
 
 func whileIdle(m *model) (bool, string) {
@@ -177,6 +178,7 @@ func whileIdle(m *model) (bool, string) {
 // registry is the ordered list help and footer render from.
 var registry = []keyEntry{
 	{b: keys.Help, scope: scopeGlobal, footer: true},
+	{b: keys.Setup, scope: scopeGlobal},
 	{b: keys.EStop, scope: scopeGlobal, footer: true},
 	{b: keys.NextPane, scope: scopeGlobal, footer: true},
 	{b: keys.PrevPane, scope: scopeGlobal},

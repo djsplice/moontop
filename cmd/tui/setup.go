@@ -1,0 +1,634 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/justinh-rahb/moonraker-tui/internal/config"
+)
+
+// ---------------------------------------------------------------------------
+// Setup screen (UI-2), modelled on htop's F2: categories on the left,
+// the selected category's items on the right, changes apply and save
+// immediately. Where a change is saved depends on what it is: display
+// preferences go to the config file, per-printer settings (heater
+// names, hidden heaters, presets) to the printer's Moonraker database.
+// ---------------------------------------------------------------------------
+
+type setupState struct {
+	open     bool
+	cat      int  // selected category
+	item     int  // selected item in it
+	inItems  bool // focus on the right-hand column
+	editing  *setupEdit
+	input    textinput.Model
+	status   string // last save result or error
+	pendingD bool   // "d" pressed once on a deletable item
+}
+
+// setupEdit is an in-progress text edit (rename, pattern, number…).
+type setupEdit struct {
+	prompt string
+	apply  func(m *model, value string) (tea.Cmd, error)
+}
+
+// setupItem is one row on the right. Rows with neither toggle nor edit
+// are informational.
+type setupItem struct {
+	label   string
+	value   string // right-aligned text, e.g. "1500 mm/min"
+	check   *bool  // non-nil: drawn as [x] / [ ]
+	note    string // dimmed hint
+	toggle  func(m *model) tea.Cmd
+	edit    *setupEdit
+	initial string // edit's starting text
+	del     func(m *model) tea.Cmd
+}
+
+type setupCategory struct {
+	name  string
+	about string // one line under the items
+	items func(m *model) []setupItem
+	add   *setupEdit // "a" adds an item, when set
+	addAs string     // label for the add action
+}
+
+func checked(v bool) *bool { return &v }
+
+var setupCategories = []setupCategory{
+	{name: "Panes", about: "Hidden panes free their space for the others. Saved to the config file.", items: panesItems},
+	{name: "Temperatures", about: "Hide sensors you don't need; enter renames (empty = default). Saved to the printer.", items: tempsItems},
+	{name: "Console", about: "Lines matching a filter are hidden; ctrl+o shows them. Saved to the config file.", items: consoleItems,
+		add: &setupEdit{prompt: "Filter pattern (Go regexp)", apply: addFilter}, addAs: "add a filter"},
+	{name: "Toolhead", about: "Jog step sizes and feedrates. Saved to the config file.", items: toolheadItems},
+	{name: "Safety", about: "Prompts before dangerous actions. Saved to the config file.", items: safetyItems},
+	{name: "Presets", about: "Preheat presets for t in Temperatures. Moontop's are saved to the printer; Mainsail's are edited in Mainsail.", items: presetItems,
+		add: &setupEdit{prompt: "Name for a preset of the current heater targets", apply: addPreset}, addAs: "save current targets as a preset"},
+	{name: "Keys", about: "Every key, from the keymap registry. Remapping comes later.", items: keyItems},
+}
+
+// --- persistence -----------------------------------------------------------
+
+func (m *model) saveFile() tea.Cmd {
+	m.applySettings()
+	return saveFileCfgCmd(m.cfgPath, m.cfg)
+}
+
+func (m *model) savePrinter() tea.Cmd {
+	m.applySettings()
+	m.rebuildRows()
+	if !m.connected() || !m.ready {
+		return func() tea.Msg {
+			return settingsSavedMsg{err: fmt.Errorf("not saved: the printer isn't connected")}
+		}
+	}
+	return savePrinterCfgCmd(m.client, m.printerCfg)
+}
+
+// editTemps edits the effective heater settings and stores them on the
+// printer. The first edit copies any file settings over, so they move
+// to the printer rather than being silently replaced.
+func (m *model) editTemps(f func(t *config.Temperatures)) tea.Cmd {
+	t := m.temps()
+	t.Hidden = append([]string(nil), t.Hidden...)
+	if t.Rename != nil {
+		r := make(map[string]string, len(t.Rename))
+		for k, v := range t.Rename {
+			r[k] = v
+		}
+		t.Rename = r
+	}
+	f(&t)
+	m.printerCfg.Temperatures = t
+	return m.savePrinter()
+}
+
+// --- categories --------------------------------------------------------------
+
+func panesItems(m *model) []setupItem {
+	var items []setupItem
+	for _, f := range paneOrder {
+		f := f
+		name := paneName(f)
+		items = append(items, setupItem{
+			label: fmt.Sprintf("%d %s", paneNumber(f), name),
+			check: checked(!m.cfg.Panes.PaneHidden(name)),
+			toggle: func(m *model) tea.Cmd {
+				hide := !m.cfg.Panes.PaneHidden(name)
+				if hide && len(m.cfg.Panes.Hidden) >= len(paneOrder)-1 {
+					m.setup.status = "!! at least one pane has to stay visible"
+					return nil
+				}
+				m.cfg.Panes.SetPaneHidden(name, hide)
+				return m.saveFile()
+			},
+		})
+	}
+	return items
+}
+
+func tempsItems(m *model) []setupItem {
+	t := m.temps()
+	var items []setupItem
+	for _, n := range m.sensorNames {
+		n := n
+		note := n
+		if !canSetTarget(n) {
+			note += " · sensor"
+		}
+		items = append(items, setupItem{
+			label: m.label(n),
+			check: checked(!t.IsHidden(n)),
+			note:  note,
+			toggle: func(m *model) tea.Cmd {
+				return m.editTemps(func(t *config.Temperatures) { t.SetHidden(n, !t.IsHidden(n)) })
+			},
+			initial: t.Label(n),
+			edit: &setupEdit{
+				prompt: "Name for " + n + " (empty restores the default)",
+				apply: func(m *model, v string) (tea.Cmd, error) {
+					return m.editTemps(func(t *config.Temperatures) { t.SetLabel(n, strings.TrimSpace(v)) }), nil
+				},
+			},
+		})
+	}
+	if len(items) == 0 {
+		items = append(items, setupItem{label: "Waiting for the printer's heater list…"})
+	}
+	return items
+}
+
+func consoleItems(m *model) []setupItem {
+	c := &m.cfg.Console
+	items := []setupItem{
+		{
+			label: "Hide heat-wait temperature reports",
+			note:  "B:26.3 /0.0 T0:168.1 /140.0 during M109 / M190",
+			check: checked(c.WaitTempsHidden()),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Console.HideWaitTemps = config.Bool(!m.cfg.Console.WaitTempsHidden())
+				return m.saveFile()
+			},
+		},
+		{
+			label: "Hide TMC run current reports",
+			note:  "// Run Current: 0.80A Hold Current: 0.80A",
+			check: checked(c.RunCurrentHidden()),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Console.HideRunCurrent = config.Bool(!m.cfg.Console.RunCurrentHidden())
+				return m.saveFile()
+			},
+		},
+	}
+	for i, f := range c.Filters {
+		i, f := i, f
+		items = append(items, setupItem{
+			label: f.Name,
+			note:  "/" + f.Pattern + "/",
+			check: checked(!f.Disabled),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Console.Filters[i].Disabled = !m.cfg.Console.Filters[i].Disabled
+				return m.saveFile()
+			},
+			del: func(m *model) tea.Cmd {
+				fs := m.cfg.Console.Filters
+				m.cfg.Console.Filters = append(fs[:i:i], fs[i+1:]...)
+				if len(m.cfg.Console.Filters) == 0 {
+					m.cfg.Console.Filters = nil
+				}
+				return m.saveFile()
+			},
+		})
+	}
+	return items
+}
+
+func addFilter(m *model, v string) (tea.Cmd, error) {
+	v = strings.TrimSpace(v)
+	if err := config.ValidateFilter(v); err != nil {
+		return nil, err
+	}
+	m.cfg.Console.Filters = append(m.cfg.Console.Filters, config.Filter{Name: v, Pattern: v})
+	return m.saveFile(), nil
+}
+
+func toolheadItems(m *model) []setupItem {
+	t := &m.cfg.Toolhead
+	steps := make([]string, len(t.Steps()))
+	for i, s := range t.Steps() {
+		steps[i] = strconv.FormatFloat(s, 'f', -1, 64)
+	}
+	stepText := strings.Join(steps, ", ")
+	return []setupItem{
+		{
+			label: "Step sizes", value: stepText + " mm", initial: stepText,
+			edit: &setupEdit{prompt: "Step sizes in mm, comma-separated", apply: func(m *model, v string) (tea.Cmd, error) {
+				var out []float64
+				for _, f := range strings.Split(v, ",") {
+					f = strings.TrimSpace(f)
+					if f == "" {
+						continue
+					}
+					x, err := strconv.ParseFloat(f, 64)
+					if err != nil || x <= 0 {
+						return nil, fmt.Errorf("%q is not a positive number", f)
+					}
+					out = append(out, x)
+				}
+				if len(out) == 0 {
+					m.cfg.Toolhead.StepSizes = nil // back to defaults
+				} else {
+					m.cfg.Toolhead.StepSizes = out
+				}
+				return m.saveFile(), nil
+			}},
+		},
+		feedItem("XY feedrate", t.XY(), func(m *model) **int { return &m.cfg.Toolhead.XYFeedrate }),
+		feedItem("Z feedrate", t.Z(), func(m *model) **int { return &m.cfg.Toolhead.ZFeedrate }),
+	}
+}
+
+func feedItem(label string, cur int, field func(m *model) **int) setupItem {
+	return setupItem{
+		label: label, value: fmt.Sprintf("%d mm/min", cur), initial: strconv.Itoa(cur),
+		edit: &setupEdit{prompt: label + " in mm/min (empty = default)", apply: func(m *model, v string) (tea.Cmd, error) {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				*field(m) = nil
+				return m.saveFile(), nil
+			}
+			n, err := strconv.Atoi(v)
+			if err != nil || n <= 0 {
+				return nil, fmt.Errorf("%q is not a positive whole number", v)
+			}
+			*field(m) = config.Int(n)
+			return m.saveFile(), nil
+		}},
+	}
+}
+
+func safetyItems(m *model) []setupItem {
+	s := &m.cfg.Safety
+	return []setupItem{
+		{
+			label: "Confirm emergency stop", note: "off: ctrl+x stops the printer at once",
+			check: checked(s.EStopConfirms()),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Safety.ConfirmEStop = config.Bool(!m.cfg.Safety.EStopConfirms())
+				return m.saveFile()
+			},
+		},
+		{
+			label: "Confirm restarts when idle", note: "during a print they always confirm",
+			check: checked(s.RestartConfirmsIdle()),
+			toggle: func(m *model) tea.Cmd {
+				m.cfg.Safety.ConfirmRestartIdle = config.Bool(!m.cfg.Safety.RestartConfirmsIdle())
+				return m.saveFile()
+			},
+		},
+	}
+}
+
+func presetItems(m *model) []setupItem {
+	var items []setupItem
+	for i, p := range m.printerCfg.Presets {
+		i := i
+		pr := mergePresets([]config.Preset{p}, nil)[0]
+		items = append(items, setupItem{
+			label: p.Name,
+			note:  presetSummary(pr),
+			value: "Moontop",
+			del: func(m *model) tea.Cmd {
+				ps := m.printerCfg.Presets
+				m.printerCfg.Presets = append(ps[:i:i], ps[i+1:]...)
+				if len(m.printerCfg.Presets) == 0 {
+					m.printerCfg.Presets = nil
+				}
+				return m.savePrinter()
+			},
+		})
+	}
+	for _, p := range m.mainsailPresets {
+		items = append(items, setupItem{label: p.Name, note: presetSummary(p), value: "Mainsail"})
+	}
+	if len(items) == 0 {
+		items = append(items, setupItem{label: "No presets yet. Set heater targets, then press a here."})
+	}
+	return items
+}
+
+func addPreset(m *model, v string) (tea.Cmd, error) {
+	name := strings.TrimSpace(v)
+	if name == "" {
+		return nil, fmt.Errorf("a preset needs a name")
+	}
+	p, err := m.currentTargetsPreset(name)
+	if err != nil {
+		return nil, err
+	}
+	// Same name replaces.
+	var out []config.Preset
+	for _, q := range m.printerCfg.Presets {
+		if q.Name != name {
+			out = append(out, q)
+		}
+	}
+	out = append(out, p)
+	config.SortPresets(out)
+	m.printerCfg.Presets = out
+	return m.savePrinter(), nil
+}
+
+func keyItems(m *model) []setupItem {
+	var items []setupItem
+	for _, e := range registry {
+		h := e.b.Help()
+		items = append(items, setupItem{label: h.Key, note: e.scope.title() + " · " + h.Desc})
+	}
+	return items
+}
+
+// --- keys --------------------------------------------------------------------
+
+func (m *model) openSetup() {
+	m.setup.open = true
+	m.setup.editing = nil
+	m.setup.status = ""
+	m.setup.pendingD = false
+	if m.cfgPath == "" && m.setup.status == "" {
+		m.setup.status = "!! the config file couldn't be read, so file settings won't be saved this session"
+	}
+}
+
+func (m *model) currentItems() []setupItem {
+	return setupCategories[m.setup.cat].items(m)
+}
+
+func (m *model) clampSetup() {
+	n := len(m.currentItems())
+	if m.setup.item >= n {
+		m.setup.item = n - 1
+	}
+	if m.setup.item < 0 {
+		m.setup.item = 0
+	}
+}
+
+func (m *model) handleSetupKey(msg tea.KeyMsg) tea.Cmd {
+	st := &m.setup
+	if st.editing != nil {
+		switch msg.String() {
+		case "esc":
+			st.editing = nil
+			return nil
+		case "enter":
+			ed := st.editing
+			cmd, err := ed.apply(m, st.input.Value())
+			if err != nil {
+				st.status = "!! " + err.Error()
+				return nil // stay in the edit so it can be fixed
+			}
+			st.editing = nil
+			m.clampSetup()
+			return cmd
+		}
+		var cmd tea.Cmd
+		st.input, cmd = st.input.Update(msg)
+		return cmd
+	}
+
+	k := msg.String()
+	if k != "d" {
+		st.pendingD = false
+	}
+	cat := setupCategories[st.cat]
+	switch {
+	case key.Matches(msg, *keys.Setup), k == "q" && !st.inItems:
+		st.open = false
+		return nil
+	case k == "esc":
+		if st.inItems {
+			st.inItems = false
+		} else {
+			st.open = false
+		}
+		return nil
+	case k == "tab", k == "right", k == "l":
+		if !st.inItems {
+			st.inItems, st.item = true, 0
+		}
+		return nil
+	case k == "shift+tab", k == "left", k == "h":
+		st.inItems = false
+		return nil
+	case k == "up", k == "k":
+		if st.inItems {
+			st.item--
+			m.clampSetup()
+		} else if st.cat > 0 {
+			st.cat--
+			st.item = 0
+		}
+		return nil
+	case k == "down", k == "j":
+		if st.inItems {
+			st.item++
+			m.clampSetup()
+		} else if st.cat < len(setupCategories)-1 {
+			st.cat++
+			st.item = 0
+		}
+		return nil
+	case k == "a" && cat.add != nil:
+		m.beginEdit(cat.add, "")
+		return nil
+	}
+	if !st.inItems {
+		if k == "enter" {
+			st.inItems, st.item = true, 0
+		}
+		return nil
+	}
+
+	items := m.currentItems()
+	if st.item >= len(items) {
+		return nil
+	}
+	it := items[st.item]
+	switch k {
+	case " ":
+		if it.toggle != nil {
+			return it.toggle(m)
+		}
+	case "enter":
+		switch {
+		case it.edit != nil:
+			m.beginEdit(it.edit, it.initial)
+		case it.toggle != nil:
+			return it.toggle(m)
+		}
+	case "d":
+		if it.del == nil {
+			return nil
+		}
+		if !st.pendingD {
+			st.pendingD = true
+			st.status = "press d again to delete " + it.label
+			return nil
+		}
+		st.pendingD = false
+		cmd := it.del(m)
+		m.clampSetup()
+		return cmd
+	}
+	return nil
+}
+
+func (m *model) beginEdit(e *setupEdit, initial string) {
+	ti := textinput.New()
+	ti.Prompt = "› "
+	ti.CharLimit = 200
+	ti.Width = 40
+	ti.SetValue(initial)
+	ti.CursorEnd()
+	ti.Focus()
+	m.setup.input = ti
+	m.setup.editing = e
+	m.setup.status = ""
+}
+
+// --- rendering -----------------------------------------------------------------
+
+func (m model) renderSetup() string {
+	st := m.setup
+	w := m.width
+	if w < 60 {
+		w = 60
+	}
+	leftW := 16
+	for _, c := range setupCategories {
+		if len(c.name)+4 > leftW {
+			leftW = len(c.name) + 4
+		}
+	}
+	rightW := w - leftW - 4 - 4 - 2
+
+	// Left: categories.
+	var left []string
+	for i, c := range setupCategories {
+		line := "  " + c.name
+		switch {
+		case i == st.cat && !st.inItems:
+			line = setupCursorStyle.Render("▸ " + c.name)
+		case i == st.cat:
+			line = helpGroupStyle.Render("▸ " + c.name)
+		}
+		left = append(left, line)
+	}
+
+	// Right: items, scrolled to keep the cursor in view.
+	cat := setupCategories[st.cat]
+	items := cat.items(&m)
+	bodyH := m.height - 8
+	if bodyH < 5 {
+		bodyH = 5
+	}
+	listH := bodyH - 2 // about + add lines
+	start := 0
+	if st.item >= listH {
+		start = st.item - listH + 1
+	}
+	var right []string
+	for i := start; i < len(items) && i < start+listH; i++ {
+		right = append(right, renderSetupItem(items[i], st.inItems && i == st.item, rightW))
+	}
+	for len(right) < listH {
+		right = append(right, "")
+	}
+	about := consoleInfoStyle.Render(cat.about)
+	if cat.add != nil {
+		about = footerFocusStyle.Render("a") + footerText.Render(" "+cat.addAs) + consoleInfoStyle.Render("  ·  "+cat.about)
+	}
+	right = append(right, "", about)
+
+	box := func(content []string, width int, focused bool) string {
+		s := panelStyle.Width(width).Height(bodyH)
+		if focused {
+			s = s.BorderForeground(colorBorderFocused)
+		}
+		return s.Render(strings.Join(content, "\n"))
+	}
+	body := lipgloss.JoinHorizontal(lipgloss.Top,
+		box(left, leftW, !st.inItems),
+		box(right, rightW, st.inItems))
+
+	title := appTitleStyle.Render(appTitle + "  ·  Setup")
+	var bottom string
+	switch {
+	case st.editing != nil:
+		bottom = footerStyle.Render(st.editing.prompt+"   enter save  •  esc cancel") + "\n  " + st.input.View()
+	default:
+		keysLine := "↑↓ j k move  •  ←→ / tab switch column  •  space toggle  •  enter edit  •  d d delete  •  esc / F2 close"
+		bottom = footerStyle.Render(keysLine)
+	}
+	status := ""
+	if st.status != "" {
+		s := footerText
+		if strings.HasPrefix(st.status, "!!") {
+			s = consoleErrStyle
+		}
+		status = "\n" + lipgloss.NewStyle().MarginLeft(2).Render(s.Render(st.status))
+	}
+	return title + "\n" + bodyStyle.Render(body) + "\n" + bottom + status + "\n"
+}
+
+func renderSetupItem(it setupItem, cursor bool, width int) string {
+	box := "    "
+	if it.check != nil {
+		box = "[ ] "
+		if *it.check {
+			box = "[x] "
+		}
+	}
+	text := box + it.label
+	if it.note != "" {
+		text += "  " + consoleInfoStyle.Render(it.note)
+	}
+	if it.value != "" {
+		pad := width - lipgloss.Width(text) - lipgloss.Width(it.value) - 2
+		if pad < 2 {
+			pad = 2
+		}
+		text += strings.Repeat(" ", pad) + it.value
+	}
+	if lipgloss.Width(text) > width-2 {
+		text = truncateRunes(stripANSI(text), width-3) + "…"
+	}
+	if cursor {
+		return setupCursorStyle.Render("▸ ") + text
+	}
+	return "  " + text
+}
+
+// stripANSI removes styling so a line can be truncated by width.
+func stripANSI(s string) string {
+	var b strings.Builder
+	in := false
+	for _, r := range s {
+		switch {
+		case r == '\x1b':
+			in = true
+		case in && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'):
+			in = false
+		case !in:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}

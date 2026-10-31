@@ -36,6 +36,7 @@ func runConsole(args []string) int {
 	fs := flag.NewFlagSet("console", flag.ContinueOnError)
 	host := hostFlag(fs)
 	noHistory := fs.Bool("no-history", false, "don't load or save command history")
+	cfgFlag := configFlag(fs)
 	fs.Usage = usage
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -64,7 +65,9 @@ func runConsole(args []string) int {
 		}
 	}
 
+	cfg, _ := loadConfig(*cfgFlag)
 	m := newReplModel(client, h, hist, histPath)
+	m.filters = buildFilters(cfg.Console)
 	_, err = tea.NewProgram(m).Run()
 	client.Close()
 	if err != nil {

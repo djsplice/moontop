@@ -48,6 +48,9 @@ const (
 type layout struct {
 	mode layoutMode
 
+	// Panes hidden in setup; the View skips them.
+	hidden map[focusArea]bool
+
 	// Wide and stacked modes both populate these.
 	tableBoxW   int
 	jogBoxW     int
@@ -85,7 +88,10 @@ type layout struct {
 //
 // reservedRows is extra vertical chrome outside the panes (currently the
 // Klippy banner); it shrinks the space handed to the panes.
-func computeLayout(termW, termH, sensorCount, reservedRows int) layout {
+//
+// hidden lists panes the user turned off in setup (UI-2); the others
+// share their space.
+func computeLayout(termW, termH, sensorCount, reservedRows int, hidden map[focusArea]bool) layout {
 	if termW < minTermW || termH < minTermH {
 		return layout{mode: layoutMinimal}
 	}
@@ -108,31 +114,62 @@ func computeLayout(termW, termH, sensorCount, reservedRows int) layout {
 		availH = 1
 	}
 
+	var l layout
 	if termW < minWideW {
-		return computeStacked(availW, availH, sensorCount)
+		l = computeStacked(availW, availH, sensorCount, hidden)
+	} else {
+		l = computeWide(availW, availH, sensorCount, hidden)
 	}
-	return computeWide(availW, availH, sensorCount)
+	l.hidden = hidden
+	return l
 }
 
 // computeWide: temp + jog + tuning + files side by side on top,
 // console below. Width budget: jog and tuning are roughly fixed (they
 // hold compact widgets), files takes a chunk, table absorbs the rest.
-func computeWide(availW, availH, sensorCount int) layout {
-	jogBoxW := 26
-	if jogBoxW > availW/5 {
-		jogBoxW = availW / 5
+func computeWide(availW, availH, sensorCount int, hidden map[focusArea]bool) layout {
+	// Toolhead and Tuning hold compact widgets at a fixed width; Files
+	// and Temperatures share what's left 1:2. Hidden panes take no
+	// space. If no sharing pane is visible, the fixed ones share it.
+	fixedW := func(want int) int {
+		if want > availW/5 {
+			return availW / 5
+		}
+		return want
 	}
-	tuningBoxW := 30
-	if tuningBoxW > availW/5 {
-		tuningBoxW = availW / 5
+	var jogBoxW, tuningBoxW, filesBoxW, tableBoxW int
+	if !hidden[focusJog] {
+		jogBoxW = fixedW(26)
 	}
-	filesBoxW := (availW - jogBoxW - tuningBoxW) * 1 / 3
-	if filesBoxW < 28 {
-		filesBoxW = 28
+	if !hidden[focusTuning] {
+		tuningBoxW = fixedW(30)
 	}
-	tableBoxW := availW - jogBoxW - tuningBoxW - filesBoxW
-	if tableBoxW < 32 {
-		tableBoxW = 32
+	rest := availW - jogBoxW - tuningBoxW
+	switch {
+	case !hidden[focusFiles] && !hidden[focusTable]:
+		filesBoxW = rest / 3
+		if filesBoxW < 28 {
+			filesBoxW = 28
+		}
+		tableBoxW = rest - filesBoxW
+		if tableBoxW < 32 {
+			tableBoxW = 32
+		}
+	case !hidden[focusFiles]:
+		filesBoxW = rest
+	case !hidden[focusTable]:
+		tableBoxW = rest
+	default:
+		// Only fixed panes (or none): spread the leftover over them.
+		switch {
+		case jogBoxW > 0 && tuningBoxW > 0:
+			jogBoxW += rest / 2
+			tuningBoxW = availW - jogBoxW
+		case jogBoxW > 0:
+			jogBoxW = availW
+		case tuningBoxW > 0:
+			tuningBoxW = availW
+		}
 	}
 
 	tableContentW := tableBoxW - panelInnerXReserve()
@@ -140,13 +177,19 @@ func computeWide(availW, availH, sensorCount int) layout {
 		tableContentW = 30
 	}
 
-	// Outer top-row height = max(pane inner needs) + borders.
-	tableInner := 2 + sensorCount
-	jogInner := 1 + jogContentMin    // title + jog body
-	filesInner := 1 + 8              // title + ~8 rows minimum
-	tuningInner := 1 + tuningRowsMin // title + label/input rows + error line
-	innerH := tableInner
-	for _, h := range []int{jogInner, filesInner, tuningInner} {
+	// Outer top-row height = max(visible panes' inner needs) + borders.
+	needs := map[focusArea]int{
+		focusTable:  2 + sensorCount,
+		focusJog:    1 + jogContentMin, // title + jog body
+		focusFiles:  1 + 8,             // title + ~8 rows minimum
+		focusTuning: 1 + tuningRowsMin, // title + label/input rows + error line
+	}
+	innerH, topVisible := 0, false
+	for f, h := range needs {
+		if hidden[f] {
+			continue
+		}
+		topVisible = true
 		if h > innerH {
 			innerH = h
 		}
@@ -157,6 +200,12 @@ func computeWide(availW, availH, sensorCount int) layout {
 		if topRowH < 8 {
 			topRowH = 8
 		}
+	}
+	switch {
+	case !topVisible:
+		topRowH = 0
+	case hidden[focusConsole]:
+		topRowH = availH
 	}
 
 	consoleOuter := availH - topRowH
@@ -186,16 +235,17 @@ func computeWide(availW, availH, sensorCount int) layout {
 const tuningRowsMin = 9
 
 // computeStacked: narrow terminal — every pane full-width, stacked.
-func computeStacked(availW, availH, sensorCount int) layout {
-	tableInner := 2 + sensorCount
-	jogInner := 1 + jogContentMin
-	filesInner := 1 + 6
-	tuningInner := 1 + tuningRowsMin
-
-	tableH := tableInner + 2
-	jogH := jogInner + 2
-	filesH := filesInner + 2
-	tuningH := tuningInner + 2
+func computeStacked(availW, availH, sensorCount int, hidden map[focusArea]bool) layout {
+	outer := func(f focusArea, inner int) int {
+		if hidden[f] {
+			return 0
+		}
+		return inner + 2
+	}
+	tableH := outer(focusTable, 2+sensorCount)
+	jogH := outer(focusJog, 1+jogContentMin)
+	filesH := outer(focusFiles, 1+6)
+	tuningH := outer(focusTuning, 1+tuningRowsMin)
 
 	consoleOuter := availH - tableH - jogH - filesH - tuningH
 	if consoleOuter < 7 {
@@ -319,6 +369,7 @@ func renderFooter(paneName, paneKeys, jobKeys string, job printJob, barView, con
 	// Always visible: the way to discover everything else, and the
 	// way to stop the machine.
 	out += sep + footerFocusStyle.Render("?") + footerText.Render(" help") +
+		sep + footerFocusStyle.Render("F2") + footerText.Render(" setup") +
 		sep + footerFocusStyle.Render("ctrl+x") + footerText.Render(" e-stop")
 	return lipgloss.NewStyle().MarginLeft(2).Render(out)
 }

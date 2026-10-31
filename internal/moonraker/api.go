@@ -339,3 +339,14 @@ func (c *Client) DatabaseGetItem(namespace, key string) (json.RawMessage, error)
 	}
 	return body.Value, nil
 }
+
+// DatabasePostItem wraps server.database.post_item, storing value
+// (any JSON-encodable value) under namespace/key.
+func (c *Client) DatabasePostItem(namespace, key string, value any) error {
+	_, err := c.call("server.database.post_item", map[string]any{
+		"namespace": namespace,
+		"key":       key,
+		"value":     value,
+	})
+	return err
+}
