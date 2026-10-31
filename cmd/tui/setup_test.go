@@ -164,7 +164,7 @@ func TestCannotHideEveryPane(t *testing.T) {
 	for i := 0; i < len(paneOrder); i++ {
 		m = press(t, m, "space", "down")
 	}
-	if len(m.cfg.Panes.Hidden) != len(paneOrder)-1 || !strings.Contains(m.setup.status, "at least one pane") {
+	if m.visiblePaneCount() != 1 || !strings.Contains(m.setup.status, "at least one pane") {
 		t.Fatalf("hidden %v status %q", m.cfg.Panes.Hidden, m.setup.status)
 	}
 	m = press(t, m, "esc", "esc")

@@ -75,8 +75,14 @@ type initMsg struct {
 	job      printJob
 	limits   limits
 	klippy   klippyStatus
+	raw      rawObjects
 	err      error
 }
+
+// rawObjects is the generic object store (Phase 13): every field of
+// objects subscribed whole (the AFC family), merged as reported, with
+// no per-field code. Views parse what they need from it on render.
+type rawObjects map[string]map[string]any
 
 // limits mirrors the kinematic-tuning fields shown in the tuning pane.
 // Populated from toolhead status updates (subset that Klipper exposes)
@@ -219,6 +225,7 @@ const (
 	focusJog
 	focusFiles
 	focusTuning
+	focusAFC
 )
 
 // ---------------------------------------------------------------------------
@@ -297,6 +304,16 @@ type model struct {
 	mainsailPresets []preset
 	shownSensors    []string // sensorNames minus hidden ones, table order
 	setup           setupState
+
+	// Generic object store (AFC), the AFC pane's cursor, and an open
+	// one-line edit (lane tool, material, …), if any.
+	raw       rawObjects
+	afcCursor int
+	lineEdit  *lineEdit
+
+	// Commands the printer advertises (printer.gcode.help), uppercase;
+	// nil until loaded. AFC-Lite lacks some AFC commands.
+	gcodeCommands map[string]bool
 
 	// Temperatures columns actually shown: the configured ones that fit.
 	tempCols []string
@@ -615,6 +632,14 @@ func (m model) initialize() tea.Cmd {
 		// shutdown (E-stop, MCU error) shows up in the same diff
 		// stream as everything else.
 		subMap["webhooks"] = []string{"state", "state_message"}
+		// AFC (Armored Turtle's AFC-Klipper-Add-On): every object, every
+		// field — the set varies by unit type and version, and the AFC
+		// pane reads it the way Fluidd does.
+		for _, name := range objects {
+			if isAFCObject(name) {
+				subMap[name] = nil
+			}
+		}
 
 		initial, err := client.Subscribe(subMap)
 		if err != nil {
@@ -631,9 +656,10 @@ func (m model) initialize() tea.Cmd {
 		job := printJob{State: "standby"}
 		var lim limits
 		klippy := klippyStatus{State: "ready"}
-		mergeStatus(sensors, &position, &job, &lim, &klippy, initial.Objects)
+		raw := rawObjects{}
+		mergeStatus(sensors, &position, &job, &lim, &klippy, raw, initial.Objects)
 
-		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy}
+		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy, raw: raw}
 	}
 }
 
@@ -657,10 +683,21 @@ func mergeStatus(
 	job *printJob,
 	lim *limits,
 	klippy *klippyStatus,
+	raw rawObjects,
 	objects map[string]map[string]any,
 ) {
 	for name, fields := range objects {
 		switch {
+		case isAFCObject(name):
+			// Generic: store every reported field as-is.
+			obj := raw[name]
+			if obj == nil {
+				obj = map[string]any{}
+				raw[name] = obj
+			}
+			for k, v := range fields {
+				obj[k] = v
+			}
 		case name == "webhooks":
 			if v, ok := fields["state"]; ok {
 				if s, ok := v.(string); ok {
@@ -776,6 +813,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.klippy = msg.klippy
 		m.sensors = msg.sensors
 		m.sensorNames = sortedKeys(msg.sensors)
+		m.raw = msg.raw
 		m.applySettings()
 		m.position = msg.position
 		m.job = msg.job
@@ -787,9 +825,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildRows()
 		m.refreshTuningInputs()
 		m.klippyChanged()
-		// Presets and per-printer settings may have changed with the
-		// config; re-read both on every init.
-		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client))
+		// Presets, per-printer settings and the command list may have
+		// changed with the config; re-read them on every init.
+		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client), loadGcodeHelpCmd(m.client))
+
+	case gcodeHelpMsg:
+		if msg.err == nil {
+			m.gcodeCommands = map[string]bool{}
+			for _, c := range msg.commands {
+				m.gcodeCommands[c] = true
+			}
+		}
+		return m, nil
 
 	case presetsMsg:
 		if msg.err == nil {
@@ -929,7 +976,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paneOrder is the visual and Tab order; pane numbers (1–5) index it.
-var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole}
+var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC}
 
 func paneNumber(f focusArea) int {
 	for i, p := range paneOrder {
@@ -950,7 +997,7 @@ func (m *model) cycleFocus(delta int) {
 			order = append(order, f)
 		}
 	}
-	order = append(order, focusConsole)
+	order = append(order, focusAFC, focusConsole) // bottom row: AFC, then console
 	n := len(order)
 	idx := 0
 	for i, f := range order {
@@ -1569,6 +1616,7 @@ func (m model) View() string {
 	}
 
 	bodies := map[focusArea]func() string{
+		focusAFC:     m.renderAFC,
 		focusTable:   m.table.View,
 		focusJog:     m.renderJog,
 		focusFiles:   m.renderFiles,
@@ -1591,13 +1639,22 @@ func (m model) View() string {
 		if len(top) > 0 {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top...))
 		}
-		if !m.layout.hidden[focusConsole] {
-			rows = append(rows, pane(focusConsole))
+		// Bottom row: AFC (when present) beside the console.
+		var bottom []string
+		for _, f := range []focusArea{focusAFC, focusConsole} {
+			if !m.layout.hidden[f] {
+				bottom = append(bottom, pane(f))
+			}
+		}
+		if len(bottom) > 0 {
+			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, bottom...))
 		}
 		stacked = lipgloss.JoinVertical(lipgloss.Left, rows...)
 	default: // stacked
-		if !m.layout.hidden[focusConsole] {
-			top = append(top, pane(focusConsole))
+		for _, f := range []focusArea{focusAFC, focusConsole} {
+			if !m.layout.hidden[f] {
+				top = append(top, pane(f))
+			}
 		}
 		stacked = lipgloss.JoinVertical(lipgloss.Left, top...)
 	}
@@ -1615,7 +1672,10 @@ func (m model) View() string {
 		out += renderKlippyBanner(m.klippy, m.width) + "\n"
 	}
 	out += body + "\n"
-	if m.confirmation != nil {
+	switch {
+	case m.lineEdit != nil:
+		out += renderLineEdit(m.lineEdit, m.width) + "\n"
+	case m.confirmation != nil:
 		out += renderPrompt(m.confirmation, m.width) + "\n"
 	}
 	out += footer + "\n"
@@ -1728,6 +1788,8 @@ func paneName(f focusArea) string {
 		return "Temperatures"
 	case focusConsole:
 		return "Console"
+	case focusAFC:
+		return "AFC"
 	}
 	return "?"
 }

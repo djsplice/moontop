@@ -35,6 +35,7 @@ const (
 	scopeTemps
 	scopeTempEdit
 	scopeConsole
+	scopeAFC
 	scopeHelp
 )
 
@@ -58,6 +59,8 @@ func (s keyScope) title() string {
 		return "Temperatures, editing a target"
 	case scopeConsole:
 		return "Console"
+	case scopeAFC:
+		return "AFC lanes"
 	case scopeHelp:
 		return "Prompts and help"
 	}
@@ -101,6 +104,8 @@ var keys = struct {
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
 	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
 	ConsoleSend, ConsoleHistory                                          *key.Binding
+	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                      *key.Binding
+	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                   *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
@@ -108,7 +113,7 @@ var keys = struct {
 	Setup:        bind([]string{"f2", ","}, "F2/,", "setup: panes, heaters, filters, presets, safety"),
 	NextPane:     bind([]string{"tab"}, "tab", "next pane"),
 	PrevPane:     bind([]string{"shift+tab"}, "shift+tab", "previous pane"),
-	JumpPane:     bind([]string{"1", "2", "3", "4", "5"}, "1–5", "jump to pane by number"),
+	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6"}, "1–6", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 
 	Pause:  bind([]string{"p"}, "p", "pause print"),
@@ -151,6 +156,17 @@ var keys = struct {
 	TempEditApply:  bind([]string{}, "enter", "send the new target"),
 	TempEditCancel: bind([]string{}, "esc", "cancel"),
 
+	AfcMove:     bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select lane"),
+	AfcLoad:     bind([]string{"enter"}, "enter", "load the lane into its tool (CHANGE_TOOL, confirms)"),
+	AfcUnload:   bind([]string{"u"}, "u", "unload the lane from its tool (TOOL_UNLOAD, confirms)"),
+	AfcEject:    bind([]string{"e"}, "e", "eject the lane's filament (LANE_UNLOAD, confirms)"),
+	AfcClear:    bind([]string{"x"}, "x", "clear the AFC message"),
+	AfcMap:      bind([]string{"t"}, "t", "set the lane's tool (SET_MAP)"),
+	AfcMaterial: bind([]string{"m"}, "m", "set material"),
+	AfcWeight:   bind([]string{"w"}, "w", "set remaining weight"),
+	AfcColor:    bind([]string{"o"}, "o", "set colour"),
+	AfcSpool:    bind([]string{"s"}, "s", "set Spoolman spool ID"),
+
 	ConsoleSend:    bind([]string{"enter"}, "enter", "send gcode"),
 	ConsoleHistory: bind([]string{"up", "down"}, "↑ ↓", "command history"),
 }
@@ -165,6 +181,16 @@ func whilePaused(m *model) (bool, string) {
 
 func whileJobActive(m *model) (bool, string) {
 	return jobActive(m.job.State), "while a print is active"
+}
+
+func afcIdle(m *model) (bool, string) {
+	why := m.afcBlocked(m.afcModel(), false)
+	return why == "", why
+}
+
+func afcHasMessage(m *model) (bool, string) {
+	am := m.afcModel()
+	return am != nil && am.Message != "", "when AFC shows a message"
 }
 
 func havePresets(m *model) (bool, string) {
@@ -222,6 +248,17 @@ var registry = []keyEntry{
 	{b: keys.TempEditApply, scope: scopeTempEdit, short: "set", footer: true},
 	{b: keys.TempEditCancel, scope: scopeTempEdit, short: "cancel", footer: true},
 
+	{b: keys.AfcMove, scope: scopeAFC, short: "lane", footer: true},
+	{b: keys.AfcLoad, scope: scopeAFC, short: "load", footer: true, when: afcIdle},
+	{b: keys.AfcUnload, scope: scopeAFC, short: "unload", footer: true, when: afcIdle},
+	{b: keys.AfcEject, scope: scopeAFC, short: "eject", footer: true, when: afcIdle},
+	{b: keys.AfcMap, scope: scopeAFC, short: "tool", when: afcIdle},
+	{b: keys.AfcMaterial, scope: scopeAFC, short: "material", when: afcIdle},
+	{b: keys.AfcWeight, scope: scopeAFC, short: "weight", when: afcIdle},
+	{b: keys.AfcColor, scope: scopeAFC, short: "colour", when: afcIdle},
+	{b: keys.AfcSpool, scope: scopeAFC, short: "spool", when: afcIdle},
+	{b: keys.AfcClear, scope: scopeAFC, short: "clear msg", footer: true, when: afcHasMessage},
+
 	{b: keys.ConsoleSend, scope: scopeConsole, short: "send", footer: true},
 	{b: keys.ConsoleHistory, scope: scopeConsole, short: "history", footer: true},
 
@@ -243,6 +280,8 @@ func paneScope(f focusArea) keyScope {
 		return scopeTemps
 	case focusConsole:
 		return scopeConsole
+	case focusAFC:
+		return scopeAFC
 	}
 	return scopeGlobal
 }

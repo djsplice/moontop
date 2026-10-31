@@ -78,7 +78,7 @@ func (m *model) onStatusUpdate(params []json.RawMessage) tea.Cmd {
 		// No subscription snapshot yet; initMsg will carry full state.
 		return nil
 	}
-	mergeStatus(m.sensors, &m.position, &m.job, &m.limits, &m.klippy, update.Objects)
+	mergeStatus(m.sensors, &m.position, &m.job, &m.limits, &m.klippy, m.raw, update.Objects)
 	m.klippyChanged()
 	m.rebuildRows()
 	m.refreshTuningInputs()

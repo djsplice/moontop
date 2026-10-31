@@ -124,7 +124,7 @@ func panesItems(m *model) []setupItem {
 	toggle := func(name string) func(m *model) tea.Cmd {
 		return func(m *model) tea.Cmd {
 			hide := !m.cfg.Panes.PaneHidden(name)
-			if hide && len(m.cfg.Panes.Hidden) >= len(paneOrder)-1 {
+			if hide && m.visiblePaneCount() <= 1 {
 				m.setup.status = "!! at least one pane has to stay visible"
 				return nil
 			}
@@ -163,6 +163,14 @@ func panesItems(m *model) []setupItem {
 				m.clampSetup()
 				return m.saveFile()
 			},
+		})
+	}
+	if m.afcModel() != nil {
+		items = append(items, setupItem{
+			label:  fmt.Sprintf("%d AFC", paneNumber(focusAFC)),
+			note:   "beside the console",
+			check:  checked(!m.cfg.Panes.PaneHidden("AFC")),
+			toggle: toggle("AFC"),
 		})
 	}
 	pct := m.cfg.Panes.ConsolePercent()

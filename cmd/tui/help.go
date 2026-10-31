@@ -75,6 +75,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// A one-line edit (AFC lane settings) owns the keyboard.
+	if m.lineEdit != nil {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleLineEditKey(msg)
+	}
+
 	// Editing a heater target owns the keyboard (ctrl+c still quits).
 	if m.tempEdit != "" {
 		if msg.String() == "ctrl+c" {
@@ -129,6 +137,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleFilesKey(msg)
 	case focusTuning:
 		return m, m.handleTuningKey(msg)
+	case focusAFC:
+		return m, m.handleAFCKey(msg)
 	}
 	return m, nil
 }

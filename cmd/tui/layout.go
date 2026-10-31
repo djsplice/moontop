@@ -95,6 +95,7 @@ type layoutInput struct {
 	weights      map[focusArea]int
 	consolePct   int // 0 = automatic
 	sensorCount  int
+	afcLines     int // AFC pane content lines (lanes + summary)
 }
 
 func defaultLayoutInput(termW, termH, sensorCount int) layoutInput {
@@ -227,9 +228,23 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 	}
 	l.topRowH = topRowH
 
-	l.boxW[focusConsole] = availW
-	l.consoleViewportH = max(3, availH-topRowH-2-1-1)
-	l.inputW = availW - panelInnerXReserve() - 2
+	// Bottom row: the AFC pane (when present) at its natural width —
+	// 46 columns, at most a third of the row — beside the console, both
+	// as tall as the space below the top row.
+	bottomH := availH - topRowH
+	consoleW := availW
+	if !in.hidden[focusAFC] {
+		afcW := max(32, min(46, availW/3))
+		if in.hidden[focusConsole] {
+			afcW = availW
+		}
+		l.boxW[focusAFC] = afcW
+		l.boxH[focusAFC] = bottomH
+		consoleW = availW - afcW
+	}
+	l.boxW[focusConsole] = consoleW
+	l.consoleViewportH = max(3, bottomH-2-1-1)
+	l.inputW = consoleW - panelInnerXReserve() - 2
 	l.tableContentW = max(10, l.boxW[focusTable]-panelInnerXReserve())
 	l.filesContentW = l.boxW[focusFiles] - panelInnerXReserve()
 	l.filesContentH = topRowH - 2 - 1
@@ -252,6 +267,12 @@ func computeStacked(availW, availH int, top []focusArea, specs map[focusArea]pan
 		}
 		l.boxW[f] = availW
 		l.boxH[f] = h
+		used += h
+	}
+	if !in.hidden[focusAFC] {
+		h := in.afcLines + 1 + 2 // content + title + borders
+		l.boxW[focusAFC] = availW
+		l.boxH[focusAFC] = h
 		used += h
 	}
 	consoleOuter := availH - used

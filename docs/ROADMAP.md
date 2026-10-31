@@ -119,7 +119,7 @@ curl -s http://10.0.3.207:7125/printer/objects/list > testdata/objects.json
 curl -s "http://10.0.3.207:7125/printer/objects/query?AFC&toolhead&print_stats" > testdata/afc_query.json
 ```
 
-**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets) and UI-3 (layout solver: pane order, width shares, console height; Temperatures and Files columns, including heater Power). Still open from the UI plan: the Display category (ASCII glyphs, compact borders) and editable keys. Next: Phase 13 (AFC), which plugs into the layout as one more pane.
+**Done:** 14, 14.5, UI-1, 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31), UI-2 (setup screen, `config.toml`, per-printer settings in Moonraker's database, Moontop presets) and UI-3 (layout solver: pane order, width shares, console height; Temperatures and Files columns, including heater Power). Still open from the UI plan: the Display category (ASCII glyphs, compact borders) and editable keys. Phase 13 (AFC) is done: a pane beside the console, built from Fluidd's AFC model plus retrograde's AFC-Lite rules, and tested against a sanitized U1 AFC-Lite status (testdata/afc-lite-u1.json, from retrograde). Not yet exercised on real AFC hardware or with live load/unload on the U1. Next: Phase 16 (tool select, extrude/retract, speed and flow, Z offset).
 
 UI-1 to UI-3 come before Phase 13 (AFC), decided 2026-10-31: AFC adds a pane and many per-lane objects that need the same show/hide and selection machinery.
 

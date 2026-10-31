@@ -76,6 +76,9 @@ func TestPaneJumpsAndShiftTab(t *testing.T) {
 	// Jump to every pane from Files. (From Tuning or the console,
 	// digits are text, so jump from a non-text pane each time.)
 	for i, want := range paneOrder {
+		if want == focusAFC {
+			continue // no AFC on this fake printer
+		}
 		m.setFocus(focusFiles)
 		m = update(t, m, keyRunes(string(rune('1'+i))))
 		if m.focus != want {
@@ -105,6 +108,12 @@ func TestPaneTitlesAreNumbered(t *testing.T) {
 	m := readyModel(t, srv)
 	v := m.View()
 	for i, f := range paneOrder {
+		if f == focusAFC {
+			if strings.Contains(v, "6 AFC") {
+				t.Error("AFC pane drawn on a printer without AFC")
+			}
+			continue
+		}
 		want := string(rune('1'+i)) + " " + paneName(f)
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing title %q", want)

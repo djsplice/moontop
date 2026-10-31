@@ -79,12 +79,27 @@ func (m *model) label(object string) string {
 // hiddenPanes maps the file's pane names to focus areas.
 func (m *model) hiddenPanes() map[focusArea]bool {
 	h := map[focusArea]bool{}
+	// The AFC pane only exists when the printer has AFC.
+	if m.afcModel() == nil {
+		h[focusAFC] = true
+	}
 	for _, f := range paneOrder {
 		if m.cfg.Panes.PaneHidden(paneName(f)) {
 			h[f] = true
 		}
 	}
 	return h
+}
+
+// visiblePaneCount counts panes on screen (AFC only when present).
+func (m *model) visiblePaneCount() int {
+	hidden, n := m.hiddenPanes(), 0
+	for _, f := range paneOrder {
+		if !hidden[f] {
+			n++
+		}
+	}
+	return n
 }
 
 // layoutInput gathers the solver's inputs from settings and state.
@@ -100,6 +115,7 @@ func (m *model) layoutInput(reservedRows int) layoutInput {
 		}
 	}
 	in.consolePct = m.cfg.Panes.ConsolePercent()
+	in.afcLines = afcPaneLines(m.afcModel())
 	return in
 }
 

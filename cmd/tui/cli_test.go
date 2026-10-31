@@ -93,3 +93,33 @@ func TestRunGcodeNoHost(t *testing.T) {
 		t.Fatalf("exit %d, want 2", code)
 	}
 }
+
+func TestRunDump(t *testing.T) {
+	srv := afcPrinter(t)
+	srv.Handle("printer.objects.query", func(raw json.RawMessage) (any, error) {
+		var p struct {
+			Objects map[string]any `json:"objects"`
+		}
+		_ = json.Unmarshal(raw, &p)
+		status := map[string]any{}
+		for k := range p.Objects {
+			status[k] = map[string]any{"queried": true}
+		}
+		return map[string]any{"eventtime": 1.0, "status": status}, nil
+	})
+	t.Setenv("MOONRAKER_HOST", srv.Host())
+	var out, errb bytes.Buffer
+	if code := runDump([]string{"-prefix", "AFC"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var got map[string]map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if len(got) != 6 || got["AFC_lane E2"] == nil || got["toolhead"] != nil {
+		t.Fatalf("dumped %d objects: %v", len(got), out.String())
+	}
+	if code := runDump([]string{"-prefix", "nope"}, &out, &errb); code != 1 {
+		t.Fatalf("no match: exit %d", code)
+	}
+}

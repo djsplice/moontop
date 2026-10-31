@@ -70,6 +70,7 @@ Moontop has three modes:
 | `moontop` | Full-screen dashboard (everything below). |
 | `moontop console` | Interactive gcode console in your normal terminal. |
 | `moontop gcode CMD…` | Run gcode, print Klipper's output, exit. |
+| `moontop dump [-prefix AFC]` | Print printer object status as JSON (bug reports, test fixtures). |
 
 ### `moontop console`
 
@@ -121,11 +122,11 @@ from the same keymap the app uses, and shows which keys apply right
 now. The footer shows the focused pane's main keys.
 
 Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
-`4` Temperatures, `5` Console.
+`4` Temperatures, `5` Console, `6` AFC (only on printers with AFC).
 
 | Key | Action |
 | --- | ------ |
-| `1`–`5`, `Tab` / `Shift+Tab` | Jump to a pane / next / previous |
+| `1`–`6`, `Tab` / `Shift+Tab` | Jump to a pane / next / previous |
 | `?` / `F1` | Help: every key, grouped by pane |
 | `F2` / `,` | Setup: panes, heaters, console filters, toolhead, safety, presets |
 | `Ctrl+X` | Emergency stop (confirms; works everywhere) |
@@ -142,6 +143,7 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | Tuning | `↑↓` or `j k` select field, type a value, `Enter` apply changed fields |
 | Temperatures | `↑↓` or `j k` select, `Enter` set the target in place (type °C, `Enter` sends, `Esc` cancels), `t` preheat preset, `x` selected heater off, `X` all heaters off |
 | Console | type gcode, `Enter` send, `↑↓` history |
+| AFC | `↑↓` or `j k` select lane, `Enter` load into its tool, `u` unload, `e` eject (all confirm), `t` tool, `m` material, `w` weight, `o` colour, `s` spool ID, `x` clear message |
 
 While the console, a file filter or a Tuning field is taking text,
 printable keys type text (so `q` or `1` in a filename or gcode is just
@@ -184,6 +186,24 @@ Per-printer settings are kept in the printer's Moonraker database
 same way Mainsail's settings do. They take precedence over the same
 settings in the file.
 
+### AFC lanes
+
+On printers running Armored Turtle's AFC add-on, or AFC-Lite like the
+Snapmaker U1, an AFC pane appears beside the console. It shows each
+unit's lanes: colour, lane name (`*` marks the active one), tool,
+material, weight when AFC reports one, and state (In tool, Ready, Prep,
+Empty, or what AFC is busy doing).
+
+The model follows Fluidd's AFC implementation, with the rules from
+[retrograde](https://github.com/justinh-rahb/retrograde) for AFC-Lite:
+lane state comes from the sensors (AFC-Lite reports every lane as
+"empty"), and a command is only offered when the printer advertises
+it. Nothing runs during a print, while AFC is busy, or while it reports
+an error (clearing the message is still allowed). Load, unload and
+eject confirm first; eject waits until the lane is out of its tool.
+Edits validate their input, and values that could smuggle in another
+gcode command are refused.
+
 ### Heaters
 
 Targets are set in place: select a heater in Temperatures, press
@@ -215,6 +235,7 @@ cmd/tui/                the moontop binary
   cli.go                subcommand dispatch, `moontop gcode`
   keys.go               keymap registry: every key, its scope and help
   heaters.go            heater targets, cooldown, presets
+  afcpane.go            the AFC pane, its actions, the one-line edit prompt
   setup.go              the F2 setup screen
   settings.go           applying and saving settings
   help.go               key routing and the ? help overlay
@@ -225,6 +246,7 @@ cmd/tui/                the moontop binary
   klippy.go             notification dispatch table, Klipper state,
                         e-stop / restarts, banner, console styling
   theme.go              colors and styles
+internal/afc/           AFC status model and command builder
 internal/config/        settings: config.toml and per-printer settings
 internal/console/       shared by all three modes: line classification,
                         filters, history, backfill, one-shot gcode runner
@@ -235,6 +257,7 @@ internal/moonraker/     JSON-RPC over websocket client
   moonrakertest/        fake Moonraker server for tests
 cmd/moonraker-test/     ad-hoc client smoke test
 docs/ROADMAP.md         Mainsail gap audit and phase plan
+testdata/               printer status fixtures (afc-lite-u1.json: a U1)
 docs/UI-PLAN.md         controls and configurability plan (UI-1 to UI-3)
 ```
 

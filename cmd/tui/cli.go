@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -29,6 +31,8 @@ func run(args []string) int {
 			return runConsole(args[1:])
 		case "gcode":
 			return runGcode(args[1:], os.Stdin, os.Stdout, os.Stderr)
+		case "dump":
+			return runDump(args[1:], os.Stdout, os.Stderr)
 		case "help", "-h", "-help", "--help":
 			usage()
 			return 0
@@ -45,6 +49,7 @@ Usage:
   moontop console [-host ip:port]            interactive gcode console in this terminal
   moontop gcode [-host ip:port] [flags] CMD… run gcode, print the output, exit
   … | moontop gcode [-host ip:port] [flags]  run gcode read from stdin, one per line
+  moontop dump [-host ip:port] [-prefix P]   print printer object status as JSON
 
 -host defaults to $MOONRAKER_HOST (Moonraker's port is usually 7125).
 -config picks the settings file (default ~/.config/moontop/config.toml);
@@ -56,6 +61,11 @@ gcode flags:
   -filter  hide lines matched by your console filters (heat-wait
            temperatures and TMC "Run Current" by default; raw output
            unless given; filters are on in console and dashboard)
+
+dump writes {"object": {fields…}} for every printer object (or those
+starting with -prefix, e.g. -prefix AFC), the format test fixtures use.
+configfile is left out unless -prefix asks for it: it is large and holds
+your whole printer config.
 
 gcode exits 0 when every command succeeded, 1 when any failed, 2 on
 usage or connection errors.
@@ -194,4 +204,60 @@ func lineStyler(w io.Writer) func(console.Kind, string) string {
 		}
 		return l
 	}
+}
+
+// runDump is `moontop dump`: query printer objects and print them as
+// JSON, for bug reports and test fixtures (testdata/).
+func runDump(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("dump", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	host := hostFlag(fs)
+	prefix := fs.String("prefix", "", "only objects whose name starts with this (e.g. AFC)")
+	fs.Usage = usage
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	h, ok := resolveHost(*host)
+	if !ok {
+		return 2
+	}
+	log.SetOutput(io.Discard)
+	client, err := moonraker.New(h)
+	if err != nil {
+		fmt.Fprintf(stderr, "moontop dump: connect to %s: %v\n", h, err)
+		return 2
+	}
+	defer client.Close()
+
+	names, err := client.ListObjects()
+	if err != nil {
+		fmt.Fprintf(stderr, "moontop dump: list objects: %v\n", err)
+		return 1
+	}
+	want := map[string][]string{}
+	for _, n := range names {
+		if *prefix != "" && !strings.HasPrefix(n, *prefix) {
+			continue
+		}
+		if *prefix == "" && n == "configfile" {
+			continue
+		}
+		want[n] = nil
+	}
+	if len(want) == 0 {
+		fmt.Fprintf(stderr, "moontop dump: no objects match %q\n", *prefix)
+		return 1
+	}
+	st, err := client.QueryObjects(want)
+	if err != nil {
+		fmt.Fprintf(stderr, "moontop dump: query: %v\n", err)
+		return 1
+	}
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(st.Objects); err != nil {
+		fmt.Fprintf(stderr, "moontop dump: %v\n", err)
+		return 1
+	}
+	return 0
 }
