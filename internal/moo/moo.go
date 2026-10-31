@@ -21,18 +21,16 @@ var Sayings = []string{
 	"Moo. (This APT has nothing on Moontop.)",
 }
 
-// cow is original art: a cow wearing a cowbell. Line 0 continues the
-// speech bubble's tail.
+// cow is original art in cowsay's manner (side-on, the bubble's tail
+// leading in). Line 0 continues the tail.
 var cow = []string{
 	`      \`,
-	`       \   _       _`,
-	`          ( \_____/ )`,
-	`           ( o   o )_____________`,
-	`            \  -  /               )~`,
-	`             \_|_/|---------------|`,
-	`              /=\  ||           ||`,
-	`             /___\ ^^           ^^`,
-	`               o`,
+	`       \   ,-.___,-.`,
+	`        \  \_ o o _/_________`,
+	`             \ - /           )~`,
+	"              `-'|----------|",
+	`                 ||        ||`,
+	`                 ^^        ^^`,
 }
 
 // Say draws the cow saying msg, wrapped to width columns (minimum 20).
