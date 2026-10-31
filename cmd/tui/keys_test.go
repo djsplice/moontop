@@ -92,13 +92,18 @@ func TestPaneJumpsAndShiftTab(t *testing.T) {
 		}
 	}
 	// In the console, digits type.
+	m.setFocus(focusConsole)
 	m = update(t, m, keyRunes("1"))
 	if m.focus != focusConsole || m.input.Value() != "1" {
 		t.Fatalf("focus=%v input=%q", m.focus, m.input.Value())
 	}
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focus != focusTable {
+	if m.focus != focusExtruder {
 		t.Fatalf("shift+tab from console → %v", m.focus)
+	}
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
+	if m.focus != focusTable {
+		t.Fatalf("shift+tab from Extruder → %v", m.focus)
 	}
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyShiftTab})
@@ -153,12 +158,12 @@ func TestTuningDigitsTypeButLettersAreCommands(t *testing.T) {
 	m = update(t, m, keyRunes("3"))
 	m = update(t, m, keyRunes("1"))
 	m = update(t, m, keyRunes("2"))
-	if m.focus != focusTuning || !strings.HasSuffix(m.tuningInputs[m.tuningFocus].Value(), "12") {
-		t.Fatalf("focus=%v field=%q", m.focus, m.tuningInputs[m.tuningFocus].Value())
+	if m.focus != focusTuning || !m.tuneFields.editing || m.tuneFields.input.Value() != "12" {
+		t.Fatalf("focus=%v editing=%v field=%q", m.focus, m.tuneFields.editing, m.tuneFields.input.Value())
 	}
-	m = update(t, m, keyRunes("j"))
-	if m.tuningFocus != 1 {
-		t.Fatalf("j moved to field %d", m.tuningFocus)
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyEsc}, keyRunes("j"))
+	if m.tuneFields.cursor != 1 {
+		t.Fatalf("j moved to row %d", m.tuneFields.cursor)
 	}
 	m.job.State = "printing"
 	_, cmd := updateCmd(t, m, keyRunes("p"))

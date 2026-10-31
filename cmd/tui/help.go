@@ -84,12 +84,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleLineEditKey(msg)
 	}
 
-	// Typing a toolhead position or step owns the keyboard too.
+	// Typing a toolhead position or step, or a Tuning / Extruder
+	// value, owns the keyboard too.
 	if m.thEditing {
 		if msg.String() == "ctrl+c" {
 			return m.quit()
 		}
 		return m, m.handleToolheadEditKey(msg)
+	}
+	if m.editingField() {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		fl, rows := m.fieldsFor(m.focus)
+		return m, m.handleFieldEditKey(fl, rows, msg)
 	}
 
 	// Editing a heater target owns the keyboard (ctrl+c still quits).
@@ -152,6 +160,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleTuningKey(msg)
 	case focusAFC:
 		return m, m.handleAFCKey(msg)
+	case focusExtruder:
+		return m, m.handleExtruderKey(msg)
 	}
 	return m, nil
 }
@@ -208,7 +218,7 @@ func (m *model) helpLines() []string {
 	lines = append(lines, "",
 		consoleInfoStyle.Render("While the console, a file filter or a Tuning field is taking text,"),
 		consoleInfoStyle.Render("printable keys type text; ctrl-keys, F-keys, tab and arrows still work."),
-		consoleInfoStyle.Render("In Toolhead and Tuning, digits type a value; use tab to move on."))
+		consoleInfoStyle.Render("In Toolhead, Tuning and Extruder, digits type a value; use tab to move on."))
 	return lines
 }
 

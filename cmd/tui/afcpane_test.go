@@ -201,14 +201,17 @@ func TestAFCLaneEdits(t *testing.T) {
 func TestAFCLayoutAndSetup(t *testing.T) {
 	m, _ := afcReady(t)
 	l := m.layout
-	if l.w(focusAFC)+l.w(focusConsole) != 160-6 || l.h(focusAFC) == 0 {
-		t.Fatalf("bottom row: afc %d console %d h %d", l.w(focusAFC), l.w(focusConsole), l.h(focusAFC))
+	if l.w(focusAFC)+l.w(focusExtruder)+l.w(focusConsole) != 160-6 || l.h(focusAFC) == 0 || l.h(focusExtruder) != l.h(focusAFC) {
+		t.Fatalf("bottom row: afc %d extruder %d console %d h %d", l.w(focusAFC), l.w(focusExtruder), l.w(focusConsole), l.h(focusAFC))
 	}
-	// Tab order: top panes, then AFC, then console.
+	// Tab order: top panes, then AFC, Extruder, console.
 	m.setFocus(focusTable)
 	m = press(t, m, "tab")
 	if m.focus != focusAFC {
 		t.Fatalf("tab after Temperatures → %v", m.focus)
+	}
+	if m = press(t, m, "tab"); m.focus != focusExtruder {
+		t.Fatalf("tab after AFC → %v", m.focus)
 	}
 	m.cfgPath = t.TempDir() + "/config.toml"
 	m = openCategory(t, m, "Panes")
@@ -220,7 +223,7 @@ func TestAFCLayoutAndSetup(t *testing.T) {
 		t.Fatalf("AFC not hidden: %v", m.cfg.Panes.Hidden)
 	}
 	m = press(t, m, "esc", "esc")
-	if strings.Contains(m.View(), "6 AFC") || m.layout.w(focusConsole) != 160-6 {
+	if strings.Contains(m.View(), "6 AFC") || m.layout.w(focusExtruder)+m.layout.w(focusConsole) != 160-6 {
 		t.Fatal("hidden AFC still takes space")
 	}
 }

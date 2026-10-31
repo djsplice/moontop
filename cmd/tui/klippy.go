@@ -81,7 +81,6 @@ func (m *model) onStatusUpdate(params []json.RawMessage) tea.Cmd {
 	mergeStatus(m.sensors, &m.position, &m.job, &m.limits, &m.klippy, m.raw, update.Objects)
 	m.klippyChanged()
 	m.rebuildRows()
-	m.refreshTuningInputs()
 	// Drive the progress bar toward the live percent; snap to 0
 	// between prints so the next one starts from empty.
 	if m.job.State == "printing" {

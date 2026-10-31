@@ -33,6 +33,7 @@ const (
 	scopeToolhead
 	scopeToolheadEdit
 	scopeTuning
+	scopeExtruder
 	scopeTemps
 	scopeTempEdit
 	scopeConsole
@@ -53,7 +54,9 @@ func (s keyScope) title() string {
 	case scopeToolhead:
 		return "Toolhead"
 	case scopeToolheadEdit:
-		return "Toolhead, typing a position or step"
+		return "Typing a value (Toolhead, Tuning, Extruder)"
+	case scopeExtruder:
+		return "Extruder"
 	case scopeTuning:
 		return "Tuning"
 	case scopeTemps:
@@ -104,7 +107,7 @@ var keys = struct {
 	JogX, JogY, JogZ, StepDown, StepUp                                   *key.Binding
 	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                    *key.Binding
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
-	TuneMove, TuneEdit, TuneApply                                        *key.Binding
+	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract       *key.Binding
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
 	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
 	ConsoleSend, ConsoleHistory                                          *key.Binding
@@ -117,7 +120,7 @@ var keys = struct {
 	Setup:        bind([]string{"f2", ","}, "F2/,", "setup: panes, heaters, filters, presets, safety"),
 	NextPane:     bind([]string{"tab"}, "tab", "next pane"),
 	PrevPane:     bind([]string{"shift+tab"}, "shift+tab", "previous pane"),
-	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6"}, "1–6", "jump to pane by number"),
+	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7"}, "1–7", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 
 	Pause:  bind([]string{"p"}, "p", "pause print"),
@@ -147,7 +150,7 @@ var keys = struct {
 	ThMove:       bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select X, Y, Z or step"),
 	ThType:       bind([]string{}, "0–9 . -", "type a position to move to (or a custom step)"),
 	ThEdit:       bind([]string{"enter"}, "enter", "edit the selected field"),
-	ThEditApply:  bind([]string{}, "enter", "move there (absolute), or use the step"),
+	ThEditApply:  bind([]string{}, "enter", "set it (Toolhead: move there, absolute)"),
 	ThEditCancel: bind([]string{}, "esc", "cancel"),
 	HomeAll:      bind([]string{"H"}, "H", "home all axes"),
 	HomeX:        bind([]string{"x"}, "x", "home X"),
@@ -155,9 +158,13 @@ var keys = struct {
 	HomeZ:        bind([]string{"z"}, "z", "home Z"),
 	MotorsOff:    bind([]string{"m"}, "m", "motors off (M84)"),
 
-	TuneMove:  bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select field"),
-	TuneEdit:  bind([]string{}, "0–9 .", "type a value"),
-	TuneApply: bind([]string{"enter"}, "enter", "apply changed fields"),
+	// Tuning and Extruder rows (fields.go).
+	FieldMove:   bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select a row"),
+	FieldAdjust: bind([]string{"left", "right", "shift+left", "shift+right"}, "← →", "adjust by its step, at once (shift: ×10)"),
+	FieldType:   bind([]string{}, "0–9 .", "type a value; enter sets it, esc cancels"),
+	FieldEdit:   bind([]string{"enter"}, "enter", "edit the selected row"),
+	Extrude:     bind([]string{"+", "="}, "+", "extrude the length at the speed"),
+	Retract:     bind([]string{"-"}, "-", "retract the length at the speed"),
 
 	TempsMove:  bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select heater or sensor"),
 	TempSet:    bind([]string{"enter"}, "enter", "set target of the selected heater"),
@@ -250,13 +257,21 @@ var registry = []keyEntry{
 	{b: keys.HomeZ, scope: scopeToolhead, when: canMove},
 
 	{b: keys.ThType, scope: scopeToolheadEdit, short: "type", footer: true},
-	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "go", footer: true},
+	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "set", footer: true},
 	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 	{b: keys.MotorsOff, scope: scopeToolhead, when: whileIdle},
 
-	{b: keys.TuneMove, scope: scopeTuning, short: "field", footer: true},
-	{b: keys.TuneEdit, scope: scopeTuning, short: "type", footer: true},
-	{b: keys.TuneApply, scope: scopeTuning, short: "apply", footer: true},
+	{b: keys.FieldMove, scope: scopeTuning, short: "row", footer: true},
+	{b: keys.FieldAdjust, scope: scopeTuning, short: "adjust", footer: true},
+	{b: keys.FieldType, scope: scopeTuning, short: "type", footer: true},
+	{b: keys.FieldEdit, scope: scopeTuning},
+
+	{b: keys.Extrude, scope: scopeExtruder, short: "extrude", footer: true, when: canExtrude},
+	{b: keys.Retract, scope: scopeExtruder, short: "retract", footer: true, when: canExtrude},
+	{b: keys.FieldMove, scope: scopeExtruder, short: "row", footer: true},
+	{b: keys.FieldAdjust, scope: scopeExtruder, short: "adjust", footer: true},
+	{b: keys.FieldType, scope: scopeExtruder, short: "type"},
+	{b: keys.FieldEdit, scope: scopeExtruder},
 
 	{b: keys.TempsMove, scope: scopeTemps, short: "select", footer: true, widget: true},
 	{b: keys.TempSet, scope: scopeTemps, short: "set", footer: true},
@@ -302,6 +317,8 @@ func paneScope(f focusArea) keyScope {
 		return scopeConsole
 	case focusAFC:
 		return scopeAFC
+	case focusExtruder:
+		return scopeExtruder
 	}
 	return scopeGlobal
 }
@@ -314,7 +331,7 @@ func footerHints(m *model) (pane, job []string) {
 	if m.tempEdit != "" {
 		ps = scopeTempEdit
 	}
-	if m.thEditing {
+	if m.thEditing || m.editingField() {
 		ps = scopeToolheadEdit
 	}
 	var p, j []string
@@ -381,6 +398,9 @@ func (m *model) capturesText(msg tea.KeyMsg) bool {
 	case focusTuning:
 		// Only characters a number can contain; letters stay commands.
 		return strings.Trim(string(msg.Runes), "0123456789.-") == ""
+	case focusExtruder:
+		// Digits type a value; - stays retract (no row here is negative).
+		return msg.Type == tea.KeyRunes && strings.Trim(string(msg.Runes), "0123456789.") == ""
 	case focusJog:
 		// Digits start typing a position. Number keys therefore don't
 		// jump panes from here (as in Tuning); tab still moves on.

@@ -74,7 +74,7 @@ func TestPaneWidthAndConsoleHeight(t *testing.T) {
 	if m.layout.w(focusFiles) >= before.w(focusFiles) || m.layout.w(focusTable) <= before.w(focusTable) {
 		t.Fatalf("files natural width: files %d→%d table %d→%d", before.w(focusFiles), m.layout.w(focusFiles), before.w(focusTable), m.layout.w(focusTable))
 	}
-	m = press(t, m, "down", "down", "down", "down", "enter") // Console height
+	m = press(t, m, "down", "down", "down", "down", "down", "enter") // Console height (after Extruder)
 	m.setup.input.SetValue("5")
 	m = press(t, m, "enter")
 	if !strings.Contains(m.setup.status, "15 to 85") {
@@ -99,7 +99,7 @@ func TestPowerColumn(t *testing.T) {
 		Objects map[string][]string `json:"objects"`
 	}
 	_ = json.Unmarshal(srv.CallsTo("printer.objects.subscribe")[0].Params, &params)
-	if strings.Join(params.Objects["extruder"], ",") != "temperature,target,power" {
+	if !strings.HasPrefix(strings.Join(params.Objects["extruder"], ","), "temperature,target,power") {
 		t.Fatalf("extruder fields %v", params.Objects["extruder"])
 	}
 	m = openCategory(t, m, "Columns")

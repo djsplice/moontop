@@ -96,6 +96,47 @@ type layoutInput struct {
 	consolePct   int // 0 = automatic
 	sensorCount  int
 	afcLines     int // AFC pane content lines (lanes + summary)
+	extLines     int // Extruder pane content lines
+}
+
+// bottomPanes sit beside the console, left to right, at natural width.
+var bottomPanes = []focusArea{focusAFC, focusExtruder}
+
+// Bottom-row widths: AFC is 46 columns (at most a third of the row,
+// at least 32); Extruder 30 (at least 26). The console keeps at least
+// consoleMinW, or the whole layout stacks.
+const (
+	extruderNaturalW = 30
+	extruderMinW     = 26
+	afcMinW          = 32
+	consoleMinW      = 40
+)
+
+// bottomWidths gives each visible bottom pane its width, or ok=false
+// when even their minimums leave the console too narrow.
+func bottomWidths(availW int, hidden map[focusArea]bool) (map[focusArea]int, bool) {
+	w := map[focusArea]int{}
+	used := 0
+	if !hidden[focusAFC] {
+		w[focusAFC] = max(afcMinW, min(46, availW/3))
+		used += w[focusAFC]
+	}
+	if !hidden[focusExtruder] {
+		w[focusExtruder] = extruderNaturalW
+		used += w[focusExtruder]
+	}
+	if hidden[focusConsole] {
+		return w, true
+	}
+	// Shrink toward the minimums before giving up.
+	for _, f := range []focusArea{focusAFC, focusExtruder} {
+		lo := map[focusArea]int{focusAFC: afcMinW, focusExtruder: extruderMinW}[f]
+		for w[f] > lo && availW-used < consoleMinW {
+			w[f]--
+			used--
+		}
+	}
+	return w, availW-used >= consoleMinW
 }
 
 func defaultLayoutInput(termW, termH, sensorCount int) layoutInput {
@@ -110,7 +151,7 @@ func (in layoutInput) specs() map[focusArea]paneSpec {
 	return map[focusArea]paneSpec{
 		focusFiles:  {minW: 24, naturalW: 32, weight: in.weights[focusFiles], innerH: 1 + 8},
 		focusJog:    {minW: 18, naturalW: 26, weight: in.weights[focusJog], innerH: 1 + jogContentMin},
-		focusTuning: {minW: 20, naturalW: 30, weight: in.weights[focusTuning], innerH: 1 + tuningRowsMin},
+		focusTuning: {minW: 20, naturalW: 30, weight: in.weights[focusTuning], innerH: 1 + tuningContentLines},
 		focusTable:  {minW: 30, naturalW: 46, weight: in.weights[focusTable], innerH: 2 + in.sensorCount},
 	}
 }
@@ -150,8 +191,9 @@ func computeLayout(in layoutInput) layout {
 		minSum += specs[f].minW
 	}
 
+	_, bottomFits := bottomWidths(availW, in.hidden)
 	var l layout
-	if in.termW < minWideW || minSum > availW {
+	if in.termW < minWideW || minSum > availW || !bottomFits {
 		l = computeStacked(availW, availH, top, specs, in)
 	} else {
 		l = computeWide(availW, availH, top, specs, in)
@@ -228,19 +270,35 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 	}
 	l.topRowH = topRowH
 
-	// Bottom row: the AFC pane (when present) at its natural width —
-	// 46 columns, at most a third of the row — beside the console, both
-	// as tall as the space below the top row.
+	// Bottom row: AFC (when present) and Extruder at their natural
+	// widths beside the console, all as tall as the space below the top
+	// row. With the console hidden, the bottom panes share the row.
 	bottomH := availH - topRowH
 	consoleW := availW
-	if !in.hidden[focusAFC] {
-		afcW := max(32, min(46, availW/3))
-		if in.hidden[focusConsole] {
-			afcW = availW
+	widths, _ := bottomWidths(availW, in.hidden)
+	var shown []focusArea
+	for _, f := range bottomPanes {
+		if !in.hidden[f] {
+			shown = append(shown, f)
+			consoleW -= widths[f]
 		}
-		l.boxW[focusAFC] = afcW
-		l.boxH[focusAFC] = bottomH
-		consoleW = availW - afcW
+	}
+	if in.hidden[focusConsole] && len(shown) > 0 {
+		// Spread the row across the bottom panes, last one takes the rest.
+		consoleW = 0
+		left := availW
+		for i, f := range shown {
+			wf := availW / len(shown)
+			if i == len(shown)-1 {
+				wf = left
+			}
+			widths[f] = wf
+			left -= wf
+		}
+	}
+	for _, f := range shown {
+		l.boxW[f] = widths[f]
+		l.boxH[f] = bottomH
 	}
 	l.boxW[focusConsole] = consoleW
 	l.consoleViewportH = max(3, bottomH-2-1-1)
@@ -250,10 +308,6 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 	l.filesContentH = topRowH - 2 - 1
 	return l
 }
-
-// tuningRowsMin counts the inner lines the tuning pane needs:
-// 4 fields × (label + input) + 1 line for inline errors = 9.
-const tuningRowsMin = 9
 
 // computeStacked: narrow terminal — every pane full-width, stacked in
 // the configured order, console last.
@@ -269,10 +323,17 @@ func computeStacked(availW, availH int, top []focusArea, specs map[focusArea]pan
 		l.boxH[f] = h
 		used += h
 	}
-	if !in.hidden[focusAFC] {
-		h := in.afcLines + 1 + 2 // content + title + borders
-		l.boxW[focusAFC] = availW
-		l.boxH[focusAFC] = h
+	for _, f := range bottomPanes {
+		if in.hidden[f] {
+			continue
+		}
+		lines := in.afcLines
+		if f == focusExtruder {
+			lines = in.extLines
+		}
+		h := lines + 1 + 2 // content + title + borders
+		l.boxW[f] = availW
+		l.boxH[f] = h
 		used += h
 	}
 	consoleOuter := availH - used

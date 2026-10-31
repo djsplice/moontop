@@ -116,6 +116,7 @@ func (m *model) layoutInput(reservedRows int) layoutInput {
 	}
 	in.consolePct = m.cfg.Panes.ConsolePercent()
 	in.afcLines = afcPaneLines(m.afcModel())
+	in.extLines = extruderContentLines(m)
 	return in
 }
 

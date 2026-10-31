@@ -16,7 +16,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -108,31 +107,6 @@ type limits struct {
 	// MinCruiseRatio value. Older Klippers don't expose it via toolhead;
 	// when false we treat the field as write-only.
 	MinCruiseRatioKnown bool
-}
-
-// tuningField identifies one of the four limit inputs.
-type tuningField int
-
-const (
-	tuningVelocity tuningField = iota
-	tuningAccel
-	tuningSqCornerV
-	tuningMinCruise
-	tuningFieldCount
-)
-
-func (f tuningField) label() string {
-	switch f {
-	case tuningVelocity:
-		return "Velocity"
-	case tuningAccel:
-		return "Acceleration"
-	case tuningSqCornerV:
-		return "Sq. Corner Vel"
-	case tuningMinCruise:
-		return "Min Cruise Ratio"
-	}
-	return "?"
 }
 
 // filesLoadedMsg arrives once ListFiles returns. Files is sorted with
@@ -238,6 +212,7 @@ const (
 	focusFiles
 	focusTuning
 	focusAFC
+	focusExtruder
 )
 
 // ---------------------------------------------------------------------------
@@ -275,12 +250,12 @@ type model struct {
 	files    list.Model
 	progress progress.Model
 
-	// Tuning pane: one textinput per editable field, plus inner-focus
-	// index and per-field dirty bits.
-	tuningInputs [tuningFieldCount]textinput.Model
-	tuningFocus  tuningField
-	tuningDirty  [tuningFieldCount]bool
-	tuningErr    string
+	// Tuning and Extruder field lists (see fields.go); extrude length
+	// and speed are this session's choice, not printer state.
+	tuneFields fieldList
+	extFields  fieldList
+	extLen     float64
+	extSpeed   float64
 
 	// Console log lines; viewport content is rebuilt from this on append.
 	logLines []string
@@ -457,30 +432,24 @@ func initialModel(client *moonraker.Client) model {
 	prog.ShowPercentage = false // we render percentage ourselves alongside ETA
 	prog.Width = 24
 
-	var tuningInputs [tuningFieldCount]textinput.Model
-	for i := range tuningInputs {
-		ti := textinput.New()
-		ti.Prompt = ""
-		ti.CharLimit = 12
-		ti.Width = 10
-		tuningInputs[i] = ti
-	}
-
 	m := model{
-		client:       client,
-		sensors:      make(map[string]*sensorState),
-		viewport:     vp,
-		input:        ti,
-		files:        files,
-		progress:     prog,
-		tuningInputs: tuningInputs,
-		focus:        focusFiles,
-		filters:      console.DefaultFilters,
-		tempInput:    newTempInput(),
-		thInput:      newToolheadInput(),
-		stepIndex:    -1, // applySettings picks the step nearest 10 mm
-		job:          printJob{State: "standby"},
-		connState:    stateConnected,
+		client:     client,
+		sensors:    make(map[string]*sensorState),
+		viewport:   vp,
+		input:      ti,
+		files:      files,
+		progress:   prog,
+		tuneFields: newFieldList(),
+		extFields:  newFieldList(),
+		extLen:     10,
+		extSpeed:   5,
+		focus:      focusFiles,
+		filters:    console.DefaultFilters,
+		tempInput:  newTempInput(),
+		thInput:    newToolheadInput(),
+		stepIndex:  -1, // applySettings picks the step nearest 10 mm
+		job:        printJob{State: "standby"},
+		connState:  stateConnected,
 	}
 	m.applySettings()
 	return m
@@ -633,6 +602,10 @@ func (m model) initialize() tea.Cmd {
 				// fields an object doesn't have.
 				subMap[name] = []string{"temperature", "target", "power"}
 			}
+			if extruderHeater.MatchString(name) {
+				// The Extruder pane: cold-extrusion guard and pressure advance.
+				subMap[name] = append(subMap[name], "can_extrude", "pressure_advance", "smooth_time")
+			}
 		}
 
 		if len(subMap) == 0 {
@@ -640,13 +613,13 @@ func (m model) initialize() tea.Cmd {
 		}
 
 		subMap["toolhead"] = []string{
-			"position", "homed_axes", "axis_minimum", "axis_maximum",
+			"position", "homed_axes", "axis_minimum", "axis_maximum", "extruder",
 			"max_velocity", "max_accel",
 			"square_corner_velocity", "minimum_cruise_ratio",
 		}
 		// gcode_move: the position in gcode coordinates (what G1 moves
 		// to, offsets applied) for the Toolhead pane's fields.
-		subMap["gcode_move"] = []string{"gcode_position", "homing_origin"}
+		subMap["gcode_move"] = []string{"gcode_position", "homing_origin", "speed_factor", "extrude_factor"}
 		subMap["print_stats"] = []string{"state", "filename", "print_duration"}
 		subMap["virtual_sdcard"] = []string{"progress"}
 		// webhooks carries Klippy's own state + message, so a
@@ -778,6 +751,9 @@ func mergeStatus(
 				}
 			}
 		default:
+			if extruderHeater.MatchString(name) {
+				raw.merge(name, fields) // can_extrude, pressure advance
+			}
 			s, ok := sensors[name]
 			if !ok {
 				continue
@@ -838,7 +814,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setFocus(m.focus) // the rebuilt table starts unfocused
 		m.resizeLayout()
 		m.rebuildRows()
-		m.refreshTuningInputs()
 		m.klippyChanged()
 		// Presets, per-printer settings and the command list may have
 		// changed with the config; re-read them on every init.
@@ -944,12 +919,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tuningAppliedMsg:
-		if msg.err != nil {
-			m.appendLog(fmt.Sprintf("!! set velocity limit: %v", msg.err))
-		}
-		return m, nil
-
 	case disconnectedMsg:
 		m.connState = stateReconnecting
 		m.reconnectAttempt = 1
@@ -991,7 +960,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paneOrder is the visual and Tab order; pane numbers (1–5) index it.
-var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC}
+var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC, focusExtruder}
 
 func paneNumber(f focusArea) int {
 	for i, p := range paneOrder {
@@ -1012,7 +981,8 @@ func (m *model) cycleFocus(delta int) {
 			order = append(order, f)
 		}
 	}
-	order = append(order, focusAFC, focusConsole) // bottom row: AFC, then console
+	order = append(order, bottomPanes...) // bottom row: AFC, Extruder, then console
+	order = append(order, focusConsole)
 	n := len(order)
 	idx := 0
 	for i, f := range order {
@@ -1047,13 +1017,6 @@ func (m *model) setFocus(f focusArea) {
 	} else {
 		m.table.Blur()
 	}
-	if f == focusTuning {
-		m.setInnerFocus(m.tuningFocus)
-	} else {
-		for i := range m.tuningInputs {
-			m.tuningInputs[i].Blur()
-		}
-	}
 }
 
 // handleFilesKey implements the files pane's key behavior. The y/n
@@ -1077,141 +1040,6 @@ func (m *model) handleFilesKey(msg tea.KeyMsg) tea.Cmd {
 	m.files, cmd = m.files.Update(msg)
 	return cmd
 }
-
-// ---------------------------------------------------------------------------
-// Tuning pane
-// ---------------------------------------------------------------------------
-
-// refreshTuningInputs copies the live limit values into each textinput
-// EXCEPT for fields the user is currently editing — dirty bits (touched
-// since the last successful apply) and the inner-focused field are
-// both protected, so live status updates never stomp on in-flight typing.
-func (m *model) refreshTuningInputs() {
-	vals := [tuningFieldCount]float64{
-		m.limits.Velocity,
-		m.limits.Accel,
-		m.limits.SquareCornerVelocity,
-		m.limits.MinCruiseRatio,
-	}
-	known := [tuningFieldCount]bool{true, true, true, m.limits.MinCruiseRatioKnown}
-	for i := range m.tuningInputs {
-		if m.tuningDirty[i] {
-			continue
-		}
-		if m.focus == focusTuning && tuningField(i) == m.tuningFocus {
-			continue
-		}
-		if !known[i] {
-			continue
-		}
-		m.tuningInputs[i].SetValue(formatLimit(vals[i]))
-	}
-}
-
-// formatLimit formats a float for display in the tuning inputs. Trims
-// trailing zeros so 1500 doesn't show as "1500.000000".
-func formatLimit(f float64) string {
-	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
-// setInnerFocus moves inner focus inside the tuning pane to field idx.
-// Tracks textinput Focus/Blur so the cursor blinks on exactly one field.
-func (m *model) setInnerFocus(idx tuningField) {
-	if idx < 0 || int(idx) >= int(tuningFieldCount) {
-		return
-	}
-	for i := range m.tuningInputs {
-		if tuningField(i) == idx {
-			m.tuningInputs[i].Focus()
-		} else {
-			m.tuningInputs[i].Blur()
-		}
-	}
-	m.tuningFocus = idx
-}
-
-// handleTuningKey routes keys while the tuning pane is outer-focused.
-// up/down move inner focus between the four fields; Enter applies any
-// dirty fields via SET_VELOCITY_LIMIT; everything else feeds the
-// currently focused textinput. Outer Tab is handled upstream — it
-// never reaches this function — so inner navigation can't collide with
-// pane cycling.
-func (m *model) handleTuningKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "up", "k":
-		next := m.tuningFocus - 1
-		if next < 0 {
-			next = tuningFieldCount - 1
-		}
-		m.setInnerFocus(next)
-		return nil
-	case "down", "j":
-		next := m.tuningFocus + 1
-		if int(next) >= int(tuningFieldCount) {
-			next = 0
-		}
-		m.setInnerFocus(next)
-		return nil
-	case "enter":
-		return m.applyTuning()
-	}
-
-	var cmd tea.Cmd
-	m.tuningInputs[m.tuningFocus], cmd = m.tuningInputs[m.tuningFocus].Update(msg)
-	// Any keystroke other than navigation marks the field dirty so
-	// the next status update won't overwrite it.
-	m.tuningDirty[m.tuningFocus] = true
-	// Clear stale error as soon as the user starts typing again.
-	m.tuningErr = ""
-	return cmd
-}
-
-// applyTuning parses every dirty field, validates, and (if all parse
-// cleanly) sends a single SET_VELOCITY_LIMIT with only those fields.
-// Validation errors surface inline in m.tuningErr — no send happens.
-func (m *model) applyTuning() tea.Cmd {
-	var parsed [tuningFieldCount]*float64
-	for i := range m.tuningInputs {
-		if !m.tuningDirty[i] {
-			continue
-		}
-		raw := strings.TrimSpace(m.tuningInputs[i].Value())
-		if raw == "" {
-			continue
-		}
-		v, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			m.tuningErr = fmt.Sprintf("%s: not a number", tuningField(i).label())
-			return nil
-		}
-		if v < 0 {
-			m.tuningErr = fmt.Sprintf("%s: must be ≥ 0", tuningField(i).label())
-			return nil
-		}
-		copied := v
-		parsed[i] = &copied
-	}
-	// If nothing was dirty there's nothing to send.
-	if parsed == ([tuningFieldCount]*float64{}) {
-		m.tuningErr = "no changes to apply"
-		return nil
-	}
-	m.tuningErr = ""
-	for i := range m.tuningDirty {
-		m.tuningDirty[i] = false
-	}
-
-	client := m.client
-	v, a, s, c := parsed[tuningVelocity], parsed[tuningAccel], parsed[tuningSqCornerV], parsed[tuningMinCruise]
-	return m.requireConnected("apply limits", func() tea.Msg {
-		return tuningAppliedMsg{err: client.SetVelocityLimit(v, a, s, c)}
-	})
-}
-
-// tuningAppliedMsg surfaces send errors from SET_VELOCITY_LIMIT into
-// the console log; success is silent (the next toolhead status update
-// will reflect the new values).
-type tuningAppliedMsg struct{ err error }
 
 // handleJobControl dispatches p/r/c global keypresses based on the
 // current job state. Returns (cmd, true) when the key was a recognized
@@ -1567,12 +1395,13 @@ func (m model) View() string {
 	}
 
 	bodies := map[focusArea]func() string{
-		focusAFC:     m.renderAFC,
-		focusTable:   m.table.View,
-		focusJog:     m.renderJog,
-		focusFiles:   m.renderFiles,
-		focusTuning:  m.renderTuning,
-		focusConsole: func() string { return m.viewport.View() + "\n" + m.input.View() },
+		focusAFC:      m.renderAFC,
+		focusExtruder: m.renderExtruder,
+		focusTable:    m.table.View,
+		focusJog:      m.renderJog,
+		focusFiles:    m.renderFiles,
+		focusTuning:   m.renderTuning,
+		focusConsole:  func() string { return m.viewport.View() + "\n" + m.input.View() },
 	}
 	pane := func(f focusArea) string {
 		return renderPanel(m.paneTitle(f), bodies[f](), m.focus == f, m.layout.w(f), m.layout.h(f))
@@ -1590,9 +1419,9 @@ func (m model) View() string {
 		if len(top) > 0 {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top...))
 		}
-		// Bottom row: AFC (when present) beside the console.
+		// Bottom row: AFC (when present) and Extruder beside the console.
 		var bottom []string
-		for _, f := range []focusArea{focusAFC, focusConsole} {
+		for _, f := range append(append([]focusArea{}, bottomPanes...), focusConsole) {
 			if !m.layout.hidden[f] {
 				bottom = append(bottom, pane(f))
 			}
@@ -1602,7 +1431,7 @@ func (m model) View() string {
 		}
 		stacked = lipgloss.JoinVertical(lipgloss.Left, rows...)
 	default: // stacked
-		for _, f := range []focusArea{focusAFC, focusConsole} {
+		for _, f := range append(append([]focusArea{}, bottomPanes...), focusConsole) {
 			if !m.layout.hidden[f] {
 				top = append(top, pane(f))
 			}
@@ -1653,24 +1482,6 @@ func (m model) renderConnView() string {
 			fmt.Sprintf("disconnected — retrying in %s", m.nextRetryIn.Truncate(time.Second)),
 			false, false)
 	}
-}
-
-func (m model) renderTuning() string {
-	lines := make([]string, 0, int(tuningFieldCount)*2+1)
-	for i := 0; i < int(tuningFieldCount); i++ {
-		f := tuningField(i)
-		label := jogHintStyle.Render(f.label())
-		if m.focus == focusTuning && f == m.tuningFocus {
-			label = jogStepStyle.Render("▸ " + f.label())
-		} else {
-			label = jogHintStyle.Render("  " + f.label())
-		}
-		lines = append(lines, label, "  "+m.tuningInputs[i].View())
-	}
-	if m.tuningErr != "" {
-		lines = append(lines, errStyle.Render(m.tuningErr))
-	}
-	return strings.Join(lines, "\n")
 }
 
 // fitFooter renders the footer to fit the terminal: drop the focused
@@ -1741,6 +1552,8 @@ func paneName(f focusArea) string {
 		return "Console"
 	case focusAFC:
 		return "AFC"
+	case focusExtruder:
+		return "Extruder"
 	}
 	return "?"
 }
