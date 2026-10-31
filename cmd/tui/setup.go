@@ -179,6 +179,14 @@ func panesItems(m *model) []setupItem {
 		check:  checked(!m.cfg.Panes.PaneHidden("Extruder")),
 		toggle: toggle("Extruder"),
 	})
+	if len(m.outputs) > 0 {
+		items = append(items, setupItem{
+			label:  fmt.Sprintf("%d Outputs", paneNumber(focusOutputs)),
+			note:   "under Extruder",
+			check:  checked(!m.cfg.Panes.PaneHidden("Outputs")),
+			toggle: toggle("Outputs"),
+		})
+	}
 	pct := m.cfg.Panes.ConsolePercent()
 	value := "height auto"
 	if pct > 0 {

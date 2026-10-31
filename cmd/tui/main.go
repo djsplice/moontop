@@ -75,6 +75,7 @@ type initMsg struct {
 	limits   limits
 	klippy   klippyStatus
 	raw      rawObjects
+	outputs  []output
 	err      error
 }
 
@@ -213,6 +214,7 @@ const (
 	focusTuning
 	focusAFC
 	focusExtruder
+	focusOutputs
 )
 
 // ---------------------------------------------------------------------------
@@ -254,6 +256,8 @@ type model struct {
 	// and speed are this session's choice, not printer state.
 	tuneFields fieldList
 	extFields  fieldList
+	outFields  fieldList
+	outputs    []output // fans, pins, LEDs (Outputs pane), from init
 	extLen     float64
 	extSpeed   float64
 
@@ -441,6 +445,7 @@ func initialModel(client *moonraker.Client) model {
 		progress:   prog,
 		tuneFields: newFieldList(),
 		extFields:  newFieldList(),
+		outFields:  newFieldList(),
 		extLen:     10,
 		extSpeed:   5,
 		focus:      focusFiles,
@@ -626,6 +631,25 @@ func (m model) initialize() tea.Cmd {
 		// shutdown (E-stop, MCU error) shows up in the same diff
 		// stream as everything else.
 		subMap["webhooks"] = []string{"state", "state_message"}
+		// Outputs pane: fans, pins, LEDs. Pin PWM / scale and LED colour
+		// order are config, not status: read configfile once (it's large,
+		// so only when there's a pin or LED to describe).
+		var settings map[string]any
+		for _, name := range objects {
+			if o, ok := classifyOutput(name); ok {
+				subMap[name] = outputSubscription(o)
+				if (o.kind == outPin || o.kind == outLED) && settings == nil {
+					settings = map[string]any{}
+					if cf, err := client.QueryObjects(map[string][]string{"configfile": {"settings"}}); err == nil {
+						if st, ok := cf.Objects["configfile"]["settings"].(map[string]any); ok {
+							settings = st
+						}
+					}
+				}
+			}
+		}
+		outputs := discoverOutputs(objects, settings)
+
 		// AFC (Armored Turtle's AFC-Klipper-Add-On): every object, every
 		// field — the set varies by unit type and version, and the AFC
 		// pane reads it the way Fluidd does.
@@ -653,7 +677,7 @@ func (m model) initialize() tea.Cmd {
 		raw := rawObjects{}
 		mergeStatus(sensors, &position, &job, &lim, &klippy, raw, initial.Objects)
 
-		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy, raw: raw}
+		return initMsg{sensors: sensors, position: position, job: job, limits: lim, klippy: klippy, raw: raw, outputs: outputs}
 	}
 }
 
@@ -682,7 +706,7 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name), name == "gcode_move":
+		case isAFCObject(name), name == "gcode_move", isOutputObject(name):
 			// Generic: store every reported field as-is.
 			raw.merge(name, fields)
 		case name == "webhooks":
@@ -805,6 +829,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sensors = msg.sensors
 		m.sensorNames = sortedKeys(msg.sensors)
 		m.raw = msg.raw
+		m.outputs = msg.outputs
 		m.applySettings()
 		m.position = msg.position
 		m.job = msg.job
@@ -960,7 +985,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // paneOrder is the visual and Tab order; pane numbers (1–5) index it.
-var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC, focusExtruder}
+var paneOrder = []focusArea{focusFiles, focusJog, focusTuning, focusTable, focusConsole, focusAFC, focusExtruder, focusOutputs}
 
 func paneNumber(f focusArea) int {
 	for i, p := range paneOrder {
@@ -981,7 +1006,7 @@ func (m *model) cycleFocus(delta int) {
 			order = append(order, f)
 		}
 	}
-	order = append(order, bottomPanes...) // bottom row: AFC, Extruder, then console
+	order = append(order, bottomPanes...) // bottom row: AFC, Extruder, Outputs, then console
 	order = append(order, focusConsole)
 	n := len(order)
 	idx := 0
@@ -1397,6 +1422,7 @@ func (m model) View() string {
 	bodies := map[focusArea]func() string{
 		focusAFC:      m.renderAFC,
 		focusExtruder: m.renderExtruder,
+		focusOutputs:  m.renderOutputs,
 		focusTable:    m.table.View,
 		focusJog:      m.renderJog,
 		focusFiles:    m.renderFiles,
@@ -1419,12 +1445,18 @@ func (m model) View() string {
 		if len(top) > 0 {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, top...))
 		}
-		// Bottom row: AFC (when present) and Extruder beside the console.
+		// Bottom row: AFC (when present), the Extruder / Outputs column,
+		// then the console.
 		var bottom []string
-		for _, f := range append(append([]focusArea{}, bottomPanes...), focusConsole) {
-			if !m.layout.hidden[f] {
-				bottom = append(bottom, pane(f))
+		for _, col := range visibleColumns(m.layout.hidden) {
+			var stack []string
+			for _, f := range col {
+				stack = append(stack, pane(f))
 			}
+			bottom = append(bottom, lipgloss.JoinVertical(lipgloss.Left, stack...))
+		}
+		if !m.layout.hidden[focusConsole] {
+			bottom = append(bottom, pane(focusConsole))
 		}
 		if len(bottom) > 0 {
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, bottom...))
@@ -1554,6 +1586,8 @@ func paneName(f focusArea) string {
 		return "AFC"
 	case focusExtruder:
 		return "Extruder"
+	case focusOutputs:
+		return "Outputs"
 	}
 	return "?"
 }

@@ -162,6 +162,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.handleAFCKey(msg)
 	case focusExtruder:
 		return m, m.handleExtruderKey(msg)
+	case focusOutputs:
+		return m, m.handleOutputsKey(msg)
 	}
 	return m, nil
 }
@@ -218,7 +220,7 @@ func (m *model) helpLines() []string {
 	lines = append(lines, "",
 		consoleInfoStyle.Render("While the console, a file filter or a Tuning field is taking text,"),
 		consoleInfoStyle.Render("printable keys type text; ctrl-keys, F-keys, tab and arrows still work."),
-		consoleInfoStyle.Render("In Toolhead, Tuning and Extruder, digits type a value; use tab to move on."))
+		consoleInfoStyle.Render("In Toolhead, Tuning, Extruder and Outputs, digits type a value; use tab to move on."))
 	return lines
 }
 

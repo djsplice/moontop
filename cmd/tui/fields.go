@@ -31,8 +31,10 @@ type numField struct {
 
 	// value is the live value; ok=false shows "—".
 	value func(m *model) (v float64, ok bool)
-	// show overrides the formatted value (e.g. "T1" for a tool).
-	show func(v float64) string
+	// show overrides the formatted value (e.g. "T1" for a tool); showM
+	// does too, with the model at hand (an LED's colour swatch).
+	show  func(v float64) string
+	showM func(m *model, v float64) string
 
 	step     float64   // ←→ change; shift+←→ is ×10. 0 = no arrows
 	choices  []float64 // when set, ←→ step through these instead
@@ -80,6 +82,8 @@ func (m *model) fieldsFor(f focusArea) (*fieldList, []numField) {
 		return &m.tuneFields, tuningFields(m)
 	case focusExtruder:
 		return &m.extFields, extruderFields(m)
+	case focusOutputs:
+		return &m.outFields, outputFields(m)
 	}
 	return nil, nil
 }
@@ -278,6 +282,8 @@ func (m *model) renderFields(fl *fieldList, rows []numField, focused bool, width
 	for _, r := range rows {
 		labelW = max(labelW, lipgloss.Width(r.label))
 	}
+	// Long names (an output pin's section name) don't push values off.
+	labelW = min(labelW, max(6, width-14))
 	var out []string
 	for i, r := range rows {
 		mark := "  "
@@ -286,13 +292,15 @@ func (m *model) renderFields(fl *fieldList, rows []numField, focused bool, width
 			mark = setupCursorStyle.Render("▸ ")
 			lst = jogStepStyle
 		}
-		label := lst.Render(fmt.Sprintf("%-*s", labelW, r.label))
+		label := lst.Render(fmt.Sprintf("%-*s", labelW, clipWidth(r.label, labelW)))
 		var value string
 		switch v, ok := r.value(m); {
 		case focused && i == fl.cursor && fl.editing:
 			value = jogStepStyle.Render("→ " + fl.input.Value() + "▏")
 		case !ok:
 			value = jogHintStyle.Render("—")
+		case r.showM != nil:
+			value = r.showM(m, v)
 		default:
 			txt := r.format(v)
 			// Narrow pane: drop the unit before cutting digits.
@@ -311,6 +319,20 @@ func (m *model) renderFields(fl *fieldList, rows []numField, focused bool, width
 		out = append(out, clipWidth(line, width))
 	}
 	return out
+}
+
+// renderFieldsWindow renders at most maxRows rows (0 = all), scrolled
+// so the cursor row is visible.
+func (m *model) renderFieldsWindow(fl *fieldList, rows []numField, focused bool, width, maxRows int) []string {
+	lines := m.renderFields(fl, rows, focused, width)
+	if maxRows <= 0 || len(lines) <= maxRows {
+		return lines
+	}
+	start := 0
+	if fl.cursor >= maxRows {
+		start = fl.cursor - maxRows + 1
+	}
+	return lines[start : start+maxRows]
 }
 
 // ---------------------------------------------------------------------------

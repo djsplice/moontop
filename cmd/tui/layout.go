@@ -97,14 +97,20 @@ type layoutInput struct {
 	sensorCount  int
 	afcLines     int // AFC pane content lines (lanes + summary)
 	extLines     int // Extruder pane content lines
+	outLines     int // Outputs pane content lines
 }
 
-// bottomPanes sit beside the console, left to right, at natural width.
-var bottomPanes = []focusArea{focusAFC, focusExtruder}
+// The bottom row: columns beside the console, left to right, each at
+// its natural width; panes in one column stack (Extruder over Outputs).
+// bottomPanes is their Tab and stacking order.
+var (
+	bottomColumns = [][]focusArea{{focusAFC}, {focusExtruder, focusOutputs}}
+	bottomPanes   = []focusArea{focusAFC, focusExtruder, focusOutputs}
+)
 
 // Bottom-row widths: AFC is 46 columns (at most a third of the row,
-// at least 32); Extruder 30 (at least 26). The console keeps at least
-// consoleMinW, or the whole layout stacks.
+// at least 32); the Extruder / Outputs column 30 (at least 26). The
+// console keeps at least consoleMinW, or the whole layout stacks.
 const (
 	extruderNaturalW = 30
 	extruderMinW     = 26
@@ -112,26 +118,48 @@ const (
 	consoleMinW      = 40
 )
 
-// bottomWidths gives each visible bottom pane its width, or ok=false
-// when even their minimums leave the console too narrow.
+// visibleColumns lists the bottom columns with at least one pane shown,
+// each trimmed to its visible panes.
+func visibleColumns(hidden map[focusArea]bool) [][]focusArea {
+	var cols [][]focusArea
+	for _, col := range bottomColumns {
+		var shown []focusArea
+		for _, f := range col {
+			if !hidden[f] {
+				shown = append(shown, f)
+			}
+		}
+		if len(shown) > 0 {
+			cols = append(cols, shown)
+		}
+	}
+	return cols
+}
+
+// bottomWidths gives each visible bottom column its width (keyed by
+// its first pane), or ok=false when even their minimums leave the
+// console too narrow.
 func bottomWidths(availW int, hidden map[focusArea]bool) (map[focusArea]int, bool) {
 	w := map[focusArea]int{}
+	lo := map[focusArea]int{}
 	used := 0
-	if !hidden[focusAFC] {
-		w[focusAFC] = max(afcMinW, min(46, availW/3))
-		used += w[focusAFC]
-	}
-	if !hidden[focusExtruder] {
-		w[focusExtruder] = extruderNaturalW
-		used += w[focusExtruder]
+	cols := visibleColumns(hidden)
+	for _, col := range cols {
+		f := col[0]
+		if f == focusAFC {
+			w[f], lo[f] = max(afcMinW, min(46, availW/3)), afcMinW
+		} else {
+			w[f], lo[f] = extruderNaturalW, extruderMinW
+		}
+		used += w[f]
 	}
 	if hidden[focusConsole] {
 		return w, true
 	}
 	// Shrink toward the minimums before giving up.
-	for _, f := range []focusArea{focusAFC, focusExtruder} {
-		lo := map[focusArea]int{focusAFC: afcMinW, focusExtruder: extruderMinW}[f]
-		for w[f] > lo && availW-used < consoleMinW {
+	for _, col := range cols {
+		f := col[0]
+		for w[f] > lo[f] && availW-used < consoleMinW {
 			w[f]--
 			used--
 		}
@@ -270,35 +298,43 @@ func computeWide(availW, availH int, top []focusArea, specs map[focusArea]paneSp
 	}
 	l.topRowH = topRowH
 
-	// Bottom row: AFC (when present) and Extruder at their natural
-	// widths beside the console, all as tall as the space below the top
-	// row. With the console hidden, the bottom panes share the row.
+	// Bottom row: the columns at their natural widths beside the
+	// console, as tall as the space below the top row. In a column of
+	// two, the first pane (Extruder) gets its content height and the
+	// second (Outputs) the rest. With the console hidden, the columns
+	// share the row.
 	bottomH := availH - topRowH
 	consoleW := availW
 	widths, _ := bottomWidths(availW, in.hidden)
-	var shown []focusArea
-	for _, f := range bottomPanes {
-		if !in.hidden[f] {
-			shown = append(shown, f)
-			consoleW -= widths[f]
-		}
+	cols := visibleColumns(in.hidden)
+	for _, col := range cols {
+		consoleW -= widths[col[0]]
 	}
-	if in.hidden[focusConsole] && len(shown) > 0 {
-		// Spread the row across the bottom panes, last one takes the rest.
+	if in.hidden[focusConsole] && len(cols) > 0 {
 		consoleW = 0
 		left := availW
-		for i, f := range shown {
-			wf := availW / len(shown)
-			if i == len(shown)-1 {
+		for i, col := range cols {
+			wf := availW / len(cols)
+			if i == len(cols)-1 {
 				wf = left
 			}
-			widths[f] = wf
+			widths[col[0]] = wf
 			left -= wf
 		}
 	}
-	for _, f := range shown {
-		l.boxW[f] = widths[f]
-		l.boxH[f] = bottomH
+	for _, col := range cols {
+		for i, f := range col {
+			l.boxW[f] = widths[col[0]]
+			l.boxH[f] = bottomH
+			if len(col) == 2 {
+				first := max(3, min(in.extLines+3, bottomH-5))
+				if i == 0 {
+					l.boxH[f] = first
+				} else {
+					l.boxH[f] = bottomH - first
+				}
+			}
+		}
 	}
 	l.boxW[focusConsole] = consoleW
 	l.consoleViewportH = max(3, bottomH-2-1-1)
@@ -328,8 +364,11 @@ func computeStacked(availW, availH int, top []focusArea, specs map[focusArea]pan
 			continue
 		}
 		lines := in.afcLines
-		if f == focusExtruder {
+		switch f {
+		case focusExtruder:
 			lines = in.extLines
+		case focusOutputs:
+			lines = in.outLines
 		}
 		h := lines + 1 + 2 // content + title + borders
 		l.boxW[f] = availW
@@ -403,6 +442,12 @@ func renderPanel(title, body string, focused bool, outerW, outerH int) string {
 
 	bar := titleStyle.Render(title)
 	content := lipgloss.JoinVertical(lipgloss.Left, bar, body)
+	// Never grow past the box: a tall body would push the row apart.
+	if outerH > 2 {
+		if lines := strings.Split(content, "\n"); len(lines) > outerH-2 {
+			content = strings.Join(lines[:outerH-2], "\n")
+		}
+	}
 	return style.Render(content)
 }
 

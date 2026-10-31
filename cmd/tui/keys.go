@@ -34,6 +34,7 @@ const (
 	scopeToolheadEdit
 	scopeTuning
 	scopeExtruder
+	scopeOutputs
 	scopeTemps
 	scopeTempEdit
 	scopeConsole
@@ -57,6 +58,8 @@ func (s keyScope) title() string {
 		return "Typing a value (Toolhead, Tuning, Extruder)"
 	case scopeExtruder:
 		return "Extruder"
+	case scopeOutputs:
+		return "Outputs (fans, pins, LEDs)"
 	case scopeTuning:
 		return "Tuning"
 	case scopeTemps:
@@ -108,6 +111,7 @@ var keys = struct {
 	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                    *key.Binding
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
 	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract       *key.Binding
+	OutputOff, LEDColor                                                  *key.Binding
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
 	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
 	ConsoleSend, ConsoleHistory                                          *key.Binding
@@ -120,7 +124,7 @@ var keys = struct {
 	Setup:        bind([]string{"f2", ","}, "F2/,", "setup: panes, heaters, filters, presets, safety"),
 	NextPane:     bind([]string{"tab"}, "tab", "next pane"),
 	PrevPane:     bind([]string{"shift+tab"}, "shift+tab", "previous pane"),
-	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7"}, "1–7", "jump to pane by number"),
+	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7", "8"}, "1–8", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 
 	Pause:  bind([]string{"p"}, "p", "pause print"),
@@ -165,6 +169,8 @@ var keys = struct {
 	FieldEdit:   bind([]string{"enter"}, "enter", "edit the selected row"),
 	Extrude:     bind([]string{"+", "="}, "+", "extrude the length at the speed"),
 	Retract:     bind([]string{"-"}, "-", "retract the length at the speed"),
+	OutputOff:   bind([]string{"x"}, "x", "turn the selected fan, pin or LED off"),
+	LEDColor:    bind([]string{"o"}, "o", "set the selected LED's colour (hex)"),
 
 	TempsMove:  bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select heater or sensor"),
 	TempSet:    bind([]string{"enter"}, "enter", "set target of the selected heater"),
@@ -215,6 +221,11 @@ func afcHasMessage(m *model) (bool, string) {
 
 func havePresets(m *model) (bool, string) {
 	return len(m.presets) > 0, "needs a preset (F2 → Presets, or Mainsail)"
+}
+
+func ledSelected(m *model) (bool, string) {
+	i := m.outFields.cursor
+	return i < len(m.outputs) && m.outputs[i].kind == outLED, "on an LED row"
 }
 
 func whileIdle(m *model) (bool, string) {
@@ -273,6 +284,13 @@ var registry = []keyEntry{
 	{b: keys.FieldType, scope: scopeExtruder, short: "type"},
 	{b: keys.FieldEdit, scope: scopeExtruder},
 
+	{b: keys.FieldMove, scope: scopeOutputs, short: "row", footer: true},
+	{b: keys.FieldAdjust, scope: scopeOutputs, short: "adjust", footer: true},
+	{b: keys.OutputOff, scope: scopeOutputs, short: "off", footer: true},
+	{b: keys.LEDColor, scope: scopeOutputs, short: "colour", footer: true, when: ledSelected},
+	{b: keys.FieldType, scope: scopeOutputs, short: "type"},
+	{b: keys.FieldEdit, scope: scopeOutputs},
+
 	{b: keys.TempsMove, scope: scopeTemps, short: "select", footer: true, widget: true},
 	{b: keys.TempSet, scope: scopeTemps, short: "set", footer: true},
 	{b: keys.TempPreset, scope: scopeTemps, short: "preheat", footer: true, when: havePresets},
@@ -319,6 +337,8 @@ func paneScope(f focusArea) keyScope {
 		return scopeAFC
 	case focusExtruder:
 		return scopeExtruder
+	case focusOutputs:
+		return scopeOutputs
 	}
 	return scopeGlobal
 }
@@ -398,7 +418,7 @@ func (m *model) capturesText(msg tea.KeyMsg) bool {
 	case focusTuning:
 		// Only characters a number can contain; letters stay commands.
 		return strings.Trim(string(msg.Runes), "0123456789.-") == ""
-	case focusExtruder:
+	case focusExtruder, focusOutputs:
 		// Digits type a value; - stays retract (no row here is negative).
 		return msg.Type == tea.KeyRunes && strings.Trim(string(msg.Runes), "0123456789.") == ""
 	case focusJog:
