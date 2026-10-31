@@ -177,16 +177,28 @@ func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 		if ok, why := whileIdle(m); !ok {
 			return m.refuse("motors off only works " + why)
 		}
-		return m.requireConnected("motors off", m.sendGcode("M84"))
+		return m.sendEchoed("motors off", "M84")
 	}
 	return nil
+}
+
+// sendEchoed sends a one-off command and shows it in the console, as if
+// typed: Klipper prints nothing for a successful M84 or G28, so without
+// the echo a key press would leave no trace. (Jogs aren't echoed; they'd
+// flood the console.)
+func (m *model) sendEchoed(what, gcode string) tea.Cmd {
+	cmd := m.requireConnected(what, m.sendGcode(gcode))
+	if cmd != nil && m.connected() {
+		m.appendLog(">>> " + gcode)
+	}
+	return cmd
 }
 
 func (m *model) home(gcode, what string) tea.Cmd {
 	if why := m.moveRefusal(-1); why != "" {
 		return m.refuse(why)
 	}
-	return m.requireConnected(what, m.sendGcode(gcode))
+	return m.sendEchoed(what, gcode)
 }
 
 // fieldValue is a field's current value as editable text.
@@ -293,6 +305,9 @@ func (m *model) sendJog(axis string, delta float64) tea.Cmd {
 
 // sendMoveTo moves one axis to an absolute gcode coordinate.
 func (m *model) sendMoveTo(axis string, pos float64) tea.Cmd {
+	if m.connected() {
+		m.appendLog(fmt.Sprintf(">>> G1 %s%g (absolute)", axis, pos))
+	}
 	return m.sendMove(axis, "G90", pos, "move")
 }
 

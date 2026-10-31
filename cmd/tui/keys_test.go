@@ -256,6 +256,12 @@ func TestToolheadButtons(t *testing.T) {
 			t.Fatalf("%s sent %+v, want %q", k, sent, want)
 		}
 	}
+	// Klipper prints nothing for a successful M84 or G28, so the
+	// console shows what was sent.
+	m, _ = updateCmd(t, m, keyRunes("m"))
+	if !logContains(m, ">>> M84") {
+		t.Fatal("M84 not echoed to the console")
+	}
 	m.job.State = "printing"
 	m, cmd := updateCmd(t, m, keyRunes("m"))
 	if cmd != nil || !logContains(m, "motors off only works when idle") {
