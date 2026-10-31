@@ -291,6 +291,14 @@ type model struct {
 	// Temperatures table shows the State column only when it fits.
 	tableShowState bool
 
+	// Heater control (Phase 15): the object whose target is being
+	// edited in place ("" when not editing), its input, and presets
+	// read from Mainsail's settings.
+	tempEdit      string
+	tempInput     textinput.Model
+	presets       []preset
+	cooldownGcode string
+
 	// Help overlay (UI-1): open flag and scroll offset.
 	showHelp   bool
 	helpScroll int
@@ -382,6 +390,7 @@ func initialModel(client *moonraker.Client) model {
 		tuningInputs: tuningInputs,
 		focus:        focusFiles,
 		filters:      console.DefaultFilters,
+		tempInput:    newTempInput(),
 		stepIndex:    2, // 10 mm
 		job:          printJob{State: "standby"},
 		connState:    stateConnected,
@@ -446,6 +455,18 @@ type pendingConfirmation struct {
 	prompt string  // human-readable, rendered above the footer
 	onYes  tea.Cmd // executed if the user presses y
 	danger bool    // render as a red block (E-stop, restart mid-print)
+
+	// options turns the y/n prompt into a numbered choice (the preset
+	// picker): pressing an option's key runs it; esc cancels. This is
+	// the first step toward Phase 19's modal layer.
+	options []promptOption
+}
+
+// promptOption is one numbered choice on the prompt line.
+type promptOption struct {
+	key   string
+	label string
+	run   func(m *model) tea.Cmd
 }
 
 // jobControlMsg is emitted after a pause/resume/cancel call completes.
@@ -704,6 +725,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildRows()
 		m.refreshTuningInputs()
 		m.klippyChanged()
+		// Presets may have changed with the config; re-read on every init.
+		return m, loadPresetsCmd(m.client)
+
+	case presetsMsg:
+		if msg.err == nil {
+			m.presets = msg.presets
+			m.cooldownGcode = msg.cooldown
+		}
+		return m, nil
 
 	case klippyStateMsg:
 		if msg.err != nil {
@@ -1315,9 +1345,25 @@ func (m *model) setTableColumns() {
 		table.Column{Title: "Current", Width: valueW},
 		table.Column{Title: "Target", Width: valueW})
 	// Rows must never have more cells than columns while switching.
+	// Emptying the rows resets bubbles/table's cursor to -1, so keep it.
+	cursor := m.table.Cursor()
 	m.table.SetRows(nil)
 	m.table.SetColumns(columns)
 	m.rebuildRows()
+	m.table.SetCursor(cursor)
+	m.clampTableCursor()
+}
+
+// clampTableCursor keeps a row selected whenever there are rows.
+func (m *model) clampTableCursor() {
+	n := len(m.table.Rows())
+	switch c := m.table.Cursor(); {
+	case n == 0:
+	case c < 0:
+		m.table.SetCursor(0)
+	case c >= n:
+		m.table.SetCursor(n - 1)
+	}
 }
 
 func (m *model) rebuildRows() {
@@ -1332,10 +1378,16 @@ func (m *model) rebuildRows() {
 		if m.tableShowState {
 			row = append(row, s.stateLabel())
 		}
+		if name == m.tempEdit {
+			// Plain text with a bar cursor: an embedded textinput's
+			// ANSI would throw off the table's column truncation.
+			targetStr = "→ " + m.tempInput.Value() + "▏"
+		}
 		row = append(row, fmt.Sprintf("%.1f°C", s.Current), targetStr)
 		rows = append(rows, row)
 	}
 	m.table.SetRows(rows)
+	m.clampTableCursor()
 }
 
 func hasTarget(name string) bool {
@@ -1443,7 +1495,7 @@ func (m model) View() string {
 	}
 	out += body + "\n"
 	if m.confirmation != nil {
-		out += renderConfirmation(m.confirmation.prompt, m.confirmation.danger) + "\n"
+		out += renderPrompt(m.confirmation, m.width) + "\n"
 	}
 	out += footer + "\n"
 	return out

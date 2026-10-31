@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -344,6 +345,26 @@ func renderConnIndicator(label string, ok bool, warn bool) string {
 //
 // danger renders the prompt as a red block — used for E-stop and for
 // restarts while a print is active.
+// renderPrompt draws whichever prompt is pending: y/n, or numbered
+// options (the preset picker).
+func renderPrompt(c *pendingConfirmation, width int) string {
+	if len(c.options) == 0 {
+		return renderConfirmation(c.prompt, c.danger)
+	}
+	head := footerFocusStyle.Foreground(colorAccentWarm).Render("? " + c.prompt)
+	tail := footerText.Render(fmt.Sprintf("   1–%d choose  •  esc cancel", len(c.options)))
+	var items []string
+	for _, o := range c.options {
+		items = append(items, footerFocusStyle.Render(o.key)+" "+footerText.Render(o.label))
+	}
+	// One line when it fits, otherwise one option per line.
+	line := head + " " + strings.Join(items, footerText.Render("  ·  ")) + tail
+	if width <= 0 || lipgloss.Width(line)+2 <= width {
+		return lipgloss.NewStyle().MarginLeft(2).Render(line)
+	}
+	return lipgloss.NewStyle().MarginLeft(2).Render(head + tail + "\n  " + strings.Join(items, "\n  "))
+}
+
 func renderConfirmation(prompt string, danger bool) string {
 	q := footerFocusStyle.Foreground(colorAccentWarm).Render("? " + prompt)
 	if danger {

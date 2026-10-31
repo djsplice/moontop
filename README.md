@@ -139,12 +139,28 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | Files | `↑↓` or `j k` select, `/` filter, `Enter` print (confirms) |
 | Toolhead | `←→` jog X, `↑↓` jog Y, `PgUp/PgDn` jog Z, `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
 | Tuning | `↑↓` or `j k` select field, type a value, `Enter` apply changed fields |
-| Temperatures | `↑↓` or `j k` select a heater or sensor |
+| Temperatures | `↑↓` or `j k` select, `Enter` set the target in place (type °C, `Enter` sends, `Esc` cancels), `t` preheat preset, `x` selected heater off, `X` all heaters off |
 | Console | type gcode, `Enter` send, `↑↓` history |
 
 While the console, a file filter or a Tuning field is taking text,
 printable keys type text (so `q` or `1` in a filename or gcode is just
 text); ctrl-keys, F-keys, `Tab` and arrows still work.
+
+### Heaters
+
+Targets are set in place: select a heater in Temperatures, press
+`Enter`, type the target and press `Enter` again. The table keeps
+showing the printer's confirmed target, so the new value appears once
+Klipper reports it. Extruders, the bed and `heater_generic` use
+`SET_HEATER_TEMPERATURE`; temperature fans use
+`SET_TEMPERATURE_FAN_TARGET`. Klipper rejects targets above a heater's
+`max_temp`, and the error shows in the console.
+
+`t` lists the preheat presets you've made in Mainsail (they live in
+Moonraker's database, so Moontop reads the same ones), and `X` runs
+Mainsail's cooldown gcode (`TURN_OFF_HEATERS` by default). Turning
+heaters off during a print asks first. Moontop's own presets come with
+the setup screen (UI-2).
 
 ### Console filters
 
@@ -161,6 +177,7 @@ never hidden.
 cmd/tui/                the moontop binary
   cli.go                subcommand dispatch, `moontop gcode`
   keys.go               keymap registry: every key, its scope and help
+  heaters.go            heater targets, cooldown, Mainsail presets
   help.go               key routing and the ? help overlay
   repl.go               `moontop console` (inline Bubbletea program)
   cmds.go               client Cmds shared by dashboard and console

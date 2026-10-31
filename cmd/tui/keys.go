@@ -33,6 +33,7 @@ const (
 	scopeToolhead
 	scopeTuning
 	scopeTemps
+	scopeTempEdit
 	scopeConsole
 	scopeHelp
 )
@@ -53,6 +54,8 @@ func (s keyScope) title() string {
 		return "Tuning"
 	case scopeTemps:
 		return "Temperatures"
+	case scopeTempEdit:
+		return "Temperatures, editing a target"
 	case scopeConsole:
 		return "Console"
 	case scopeHelp:
@@ -95,7 +98,8 @@ var keys = struct {
 	JogX, JogY, JogZ, StepDown, StepUp                            *key.Binding
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                       *key.Binding
 	TuneMove, TuneEdit, TuneApply                                 *key.Binding
-	TempsMove                                                     *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset           *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                   *key.Binding
 	ConsoleSend, ConsoleHistory                                   *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
@@ -136,7 +140,15 @@ var keys = struct {
 	TuneEdit:  bind([]string{}, "0–9 .", "type a value"),
 	TuneApply: bind([]string{"enter"}, "enter", "apply changed fields"),
 
-	TempsMove: bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select heater or sensor"),
+	TempsMove:  bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select heater or sensor"),
+	TempSet:    bind([]string{"enter"}, "enter", "set target of the selected heater"),
+	TempOff:    bind([]string{"x"}, "x", "turn the selected heater off"),
+	TempAllOff: bind([]string{"X"}, "X", "cooldown: all heaters off"),
+	TempPreset: bind([]string{"t"}, "t", "preheat from a preset"),
+
+	TempEditType:   bind([]string{}, "0–9 .", "type the target in °C (0 = off)"),
+	TempEditApply:  bind([]string{}, "enter", "send the new target"),
+	TempEditCancel: bind([]string{}, "esc", "cancel"),
 
 	ConsoleSend:    bind([]string{"enter"}, "enter", "send gcode"),
 	ConsoleHistory: bind([]string{"up", "down"}, "↑ ↓", "command history"),
@@ -152,6 +164,10 @@ func whilePaused(m *model) (bool, string) {
 
 func whileJobActive(m *model) (bool, string) {
 	return jobActive(m.job.State), "while a print is active"
+}
+
+func havePresets(m *model) (bool, string) {
+	return len(m.presets) > 0, "needs presets (made in Mainsail for now)"
 }
 
 func whileIdle(m *model) (bool, string) {
@@ -195,6 +211,14 @@ var registry = []keyEntry{
 	{b: keys.TuneApply, scope: scopeTuning, short: "apply", footer: true},
 
 	{b: keys.TempsMove, scope: scopeTemps, short: "select", footer: true, widget: true},
+	{b: keys.TempSet, scope: scopeTemps, short: "set", footer: true},
+	{b: keys.TempPreset, scope: scopeTemps, short: "preheat", footer: true, when: havePresets},
+	{b: keys.TempOff, scope: scopeTemps, short: "off", footer: true},
+	{b: keys.TempAllOff, scope: scopeTemps, short: "all off", footer: true},
+
+	{b: keys.TempEditType, scope: scopeTempEdit, short: "type °C", footer: true},
+	{b: keys.TempEditApply, scope: scopeTempEdit, short: "set", footer: true},
+	{b: keys.TempEditCancel, scope: scopeTempEdit, short: "cancel", footer: true},
 
 	{b: keys.ConsoleSend, scope: scopeConsole, short: "send", footer: true},
 	{b: keys.ConsoleHistory, scope: scopeConsole, short: "history", footer: true},
@@ -226,6 +250,9 @@ func paneScope(f focusArea) keyScope {
 // them and drops pane items if the line is too wide.
 func footerHints(m *model) (pane, job []string) {
 	ps := paneScope(m.focus)
+	if m.tempEdit != "" {
+		ps = scopeTempEdit
+	}
 	var p, j []string
 	for _, e := range registry {
 		if !e.footer {

@@ -119,6 +119,8 @@ curl -s http://10.0.3.207:7125/printer/objects/list > testdata/objects.json
 curl -s "http://10.0.3.207:7125/printer/objects/query?AFC&toolhead&print_stats" > testdata/afc_query.json
 ```
 
+**Done:** 14, 14.5, UI-1, and 15 (heater targets in place, cooldown, Mainsail presets; pulled ahead of UI-2 on 2026-10-31). Moontop's own presets and preset editing move to UI-2's config.
+
 UI-1 to UI-3 come before Phase 13 (AFC), decided 2026-10-31: AFC adds a pane and many per-lane objects that need the same show/hide and selection machinery.
 
 Every phase keeps the existing rules: listener Cmds reissue themselves, sends are non-blocking `tea.Cmd`s, display comes from confirmed state, confirm-worthy actions go through the shared confirmation (the modal layer after Phase 19), and `go build`, `go vet` and tests stay green. New panes go in their own files; existing code moves only when a phase needs it.

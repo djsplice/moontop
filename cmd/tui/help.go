@@ -43,6 +43,19 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.confirmation != nil && len(m.confirmation.options) > 0 {
+		for _, o := range m.confirmation.options {
+			if msg.String() == o.key {
+				m.confirmation = nil
+				return m, o.run(&m)
+			}
+		}
+		if msg.String() == "esc" || msg.String() == "n" {
+			m.confirmation = nil
+		}
+		return m, nil
+	}
+
 	if m.confirmation != nil {
 		switch {
 		case key.Matches(msg, *keys.Confirm):
@@ -53,6 +66,14 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmation = nil
 		}
 		return m, nil
+	}
+
+	// Editing a heater target owns the keyboard (ctrl+c still quits).
+	if m.tempEdit != "" {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleTempEditKey(msg)
 	}
 
 	if !m.capturesText(msg) {
@@ -89,9 +110,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case focusConsole:
 		return m, m.handleConsoleKey(msg)
 	case focusTable:
-		var cmd tea.Cmd
-		m.table, cmd = m.table.Update(msg)
-		return m, cmd
+		return m, m.handleTempsKey(msg)
 	case focusJog:
 		return m, m.handleJogKey(msg)
 	case focusFiles:

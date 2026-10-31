@@ -323,7 +323,7 @@ func (m model) renderNotReady() string {
 	}
 	b.WriteString("\n")
 	if m.confirmation != nil {
-		b.WriteString(renderConfirmation(m.confirmation.prompt, m.confirmation.danger) + "\n")
+		b.WriteString(renderPrompt(m.confirmation, m.width) + "\n")
 	}
 	b.WriteString(lipgloss.NewStyle().MarginLeft(2).Render(m.renderConnView()) +
 		footerStyle.Render("  •  ctrl+c: quit") + "\n")

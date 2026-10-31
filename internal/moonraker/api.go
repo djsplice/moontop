@@ -318,3 +318,24 @@ func (c *Client) GcodeHelp() (map[string]string, error) {
 	}
 	return help, nil
 }
+
+// DatabaseGetItem wraps server.database.get_item and returns the raw
+// value stored under namespace/key (key may be dotted, "a.b.c").
+// Moonraker answers with an error when the namespace or key doesn't
+// exist; callers treating "absent" as normal should check for it.
+func (c *Client) DatabaseGetItem(namespace, key string) (json.RawMessage, error) {
+	result, err := c.call("server.database.get_item", map[string]any{
+		"namespace": namespace,
+		"key":       key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var body struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(result, &body); err != nil {
+		return nil, err
+	}
+	return body.Value, nil
+}

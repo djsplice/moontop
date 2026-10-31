@@ -51,10 +51,18 @@ func TestTemperaturesCursorWorks(t *testing.T) {
 	if m.focus != focusTable || !m.table.Focused() {
 		t.Fatalf("focus=%v table focused=%v", m.focus, m.table.Focused())
 	}
-	before := m.table.Cursor()
+	// A row is selected from the start, not only after the first key.
+	if m.table.Cursor() != 0 {
+		t.Fatalf("initial cursor %d, want 0", m.table.Cursor())
+	}
 	m = update(t, m, keyRunes("j"))
-	if m.table.Cursor() != before+1 {
-		t.Fatalf("cursor %d → %d, want +1", before, m.table.Cursor())
+	if m.table.Cursor() != 1 {
+		t.Fatalf("cursor after j = %d, want 1", m.table.Cursor())
+	}
+	// Resizing (which rebuilds the columns) keeps the selection.
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	if m.table.Cursor() != 1 {
+		t.Fatalf("cursor after resize = %d, want 1", m.table.Cursor())
 	}
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyTab})
 	if m.table.Focused() {
