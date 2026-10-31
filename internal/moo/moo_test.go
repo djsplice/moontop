@@ -7,7 +7,7 @@ import (
 
 func TestSay(t *testing.T) {
 	got := strings.Join(Say("More cowbell.", 40), "\n")
-	if !strings.HasPrefix(got, " _______________\n< More cowbell. >\n ---------------\n      \\") || !strings.Contains(got, "[###]") {
+	if !strings.HasPrefix(got, " _______________\n< More cowbell. >\n ---------------\n      \\") || !strings.Contains(got, "/___\\") {
 		t.Fatalf("one line:\n%s", got)
 	}
 	long := Say("I've got a fever, and the only prescription is more cowbell.", 24)

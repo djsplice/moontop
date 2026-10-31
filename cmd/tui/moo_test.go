@@ -20,7 +20,7 @@ func TestMoreCowbell(t *testing.T) {
 	}
 	// No beeper: the cow appears, nothing is sent.
 	m, cmd := type_("cowbell")
-	if cmd != nil || !logContains(m, "[###]") || logContains(m, ">>> cowbell") {
+	if cmd != nil || !logContains(m, "/___\\") || logContains(m, ">>> cowbell") {
 		t.Fatalf("cowbell without M300: cmd %v", cmd != nil)
 	}
 	// With a beeper, COWBELL rings it; MOO doesn't.
