@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050a07">
+  <meta name="description" content="Moontop is a keyboard-driven terminal UI for Klipper printers, through Moonraker. Everything you reach for in Mainsail or Fluidd, in a terminal.">
+  <meta property="og:title" content="Moontop — Klipper in your terminal">
+  <meta property="og:description" content="A keyboard-driven terminal UI for Klipper printers, through Moonraker.">
+  <meta property="og:image" content="https://justinh-rahb.github.io/moontop/shots/dashboard-hero.webp">
+  <title>Moontop — Klipper in your terminal</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="site.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">skip to content</a>
+
+  <header class="site-header wrap">
+    <a class="brand" href="#" aria-label="Moontop home"><span class="moon" aria-hidden="true">◐</span>moontop</a>
+    <nav aria-label="Main navigation">
+      <a href="#panes">panes</a>
+      <a href="#screens">screens</a>
+      <a href="#setup">setup</a>
+      <a href="#install">install</a>
+      <a href="https://github.com/justinh-rahb/moontop">github&nbsp;↗</a>
+    </nav>
+  </header>
+
+  <main id="main" class="wrap">
+
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="prompt"><span class="ps1">~ $</span> moontop -host voron.local:7125<span class="cursor" aria-hidden="true"></span></p>
+      <h1 id="hero-title">Klipper,<br><span>in your terminal.</span></h1>
+      <p class="lead">A keyboard-driven terminal UI for Klipper printers, through Moonraker. Everything you reach for in Mainsail or Fluidd — over SSH, in tmux, on any machine that can see your printer.</p>
+
+      <div class="installer" data-tabs>
+        <div class="tabbar" role="tablist" aria-label="Install with">
+          <button role="tab" aria-selected="true" aria-controls="i-brew" id="t-brew">brew</button>
+          <button role="tab" aria-selected="false" aria-controls="i-curl" id="t-curl" tabindex="-1">curl</button>
+          <button role="tab" aria-selected="false" aria-controls="i-scoop" id="t-scoop" tabindex="-1">scoop</button>
+          <button role="tab" aria-selected="false" aria-controls="i-go" id="t-go" tabindex="-1">go</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="i-brew" aria-labelledby="t-brew"><pre><code><span class="ps1">$</span> brew install --cask justinh-rahb/tap/moontop</code></pre><button class="copy" type="button">copy</button></div>
+        <div class="tabpanel" role="tabpanel" id="i-curl" aria-labelledby="t-curl" hidden><pre><code><span class="ps1">$</span> curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code></pre><button class="copy" type="button">copy</button></div>
+        <div class="tabpanel" role="tabpanel" id="i-scoop" aria-labelledby="t-scoop" hidden><pre><code><span class="ps1">&gt;</span> scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket
+<span class="ps1">&gt;</span> scoop install moontop</code></pre><button class="copy" type="button">copy</button></div>
+        <div class="tabpanel" role="tabpanel" id="i-go" aria-labelledby="t-go" hidden><pre><code><span class="ps1">$</span> go install github.com/justinh-rahb/moontop/cmd/moontop@latest</code></pre><button class="copy" type="button">copy</button></div>
+      </div>
+      <p class="meta">single binary · linux · macos · windows · freebsd · amd64 / arm64 / armv7 · MIT</p>
+    </section>
+
+    <figure class="term hero-shot">
+      <figcaption class="term-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>moontop — dashboard</span><span class="dim">live printer</span></figcaption>
+      <a href="shots/dashboard.webp" data-shot data-caption="Dashboard · Files, Toolhead, Tuning, Temperatures, AFC, Extruder, Outputs, Macros and Console">
+        <img src="shots/dashboard-hero.webp" width="2216" height="1456" alt="The Moontop dashboard: nine panes with files, toolhead position, tuning, temperatures with sparklines, AFC lanes, extruder, outputs, pinned macros and the console" fetchpriority="high">
+      </a>
+    </figure>
+
+    <ul class="facts" aria-label="Highlights">
+      <li><b>no install on the printer</b><span>talks to Moonraker's API on :7125. nothing to add to the host.</span></li>
+      <li><b>keys as data</b><span>every key lives in one registry. the footer and <kbd>?</kbd> help can't lie.</span></li>
+      <li><b>confirmed state only</b><span>positions and temps come from Klipper, never from guesses.</span></li>
+      <li><b>detects, doesn't assume</b><span>QGL or Z tilt, AFC, load macros, history — shown when the printer has them.</span></li>
+    </ul>
+
+    <section id="panes" class="section" aria-labelledby="panes-title">
+      <h2 id="panes-title"><span class="hash">#</span> the dashboard</h2>
+      <p class="section-lead">Nine panes, laid out by a solver you can reorder and resize. <kbd>tab</kbd> cycles, <kbd>1</kbd>–<kbd>9</kbd> jump, <kbd>ctrl+x</kbd> is the e-stop from anywhere.</p>
+      <div class="pane-list">
+        <article><h3><span class="n">1</span> files</h3><p>filter, print, add to the job queue. size and modified columns.</p></article>
+        <article><h3><span class="n">2</span> toolhead</h3><p><kbd>w</kbd><kbd>a</kbd><kbd>s</kbd><kbd>d</kbd> jogs XY, <kbd>space</kbd>/<kbd>c</kbd> jump and crouch Z. type absolute positions. home, motors off, endstops, QGL / Z tilt.</p></article>
+        <article><h3><span class="n">3</span> tuning</h3><p>speed and flow factor, Z-offset babystep, velocity and accel limits — live, while printing.</p></article>
+        <article><h3><span class="n">4</span> temperatures</h3><p>set targets inline, presets (Mainsail's too), cooldown, braille sparkline history.</p></article>
+        <article><h3><span class="n">5</span> console</h3><p>gcode with tab completion and macro parameter hints. filters hide heat-wait and TMC noise.</p></article>
+        <article><h3><span class="n">6</span> afc</h3><p>lanes from <code>AFC.lanes</code>: colour, material, tool map, load / unload / eject.</p></article>
+        <article><h3><span class="n">7</span> extruder</h3><p>tool select, extrude / retract, pressure advance, filament load / unload detected per printer.</p></article>
+        <article><h3><span class="n">8</span> outputs</h3><p>fans, output pins and LEDs, built from each object's type.</p></article>
+        <article><h3><span class="n">9</span> macros</h3><p>your pinned macros, one key away, with parameter forms.</p></article>
+      </div>
+    </section>
+
+    <section id="screens" class="section" aria-labelledby="screens-title">
+      <h2 id="screens-title"><span class="hash">#</span> full-screen tools</h2>
+      <p class="section-lead">One key opens each, <kbd>esc</kbd> brings you back. Click any screenshot to page through them full size.</p>
+      <div class="gallery">
+        <a class="card" href="shots/macros.webp" data-shot data-caption="Macros · every macro on the printer, filtered, run or pinned (F3 / g)">
+          <img src="shots/macros-thumb.webp" width="1120" height="700" alt="Macro browser listing 120 macros with descriptions" loading="lazy">
+          <span class="card-text"><b>macros</b><kbd>F3</kbd><kbd>g</kbd><span>all of them: filter, run, pin to the pane, fill in parameters.</span></span>
+        </a>
+        <a class="card" href="shots/jobs.webp" data-shot data-caption="Jobs · print history, totals and the job queue (F7 / J)">
+          <img src="shots/jobs-thumb.webp" width="1120" height="700" alt="Print history with file names, dates, durations, filament used and status" loading="lazy">
+          <span class="card-text"><b>jobs</b><kbd>F7</kbd><kbd>J</kbd><span>print history, totals and the job queue. reprint with one key.</span></span>
+        </a>
+        <a class="card" href="shots/bed-mesh.webp" data-shot data-caption="Bed mesh · a Marlin-style grid, coloured by height, with profiles (F11 / B)">
+          <img src="shots/bed-mesh-thumb.webp" width="1120" height="700" alt="Bed mesh shown as a 6 by 6 grid of coloured boxes with height values" loading="lazy">
+          <span class="card-text"><b>bed mesh</b><kbd>F11</kbd><kbd>B</kbd><span>values in coloured boxes, profiles, calibrate, screws tilt, manual probe.</span></span>
+        </a>
+        <a class="card" href="shots/machine.webp" data-shot data-caption="Machine · host and MCU stats, services and power devices (F8 / M)">
+          <img src="shots/machine-thumb.webp" width="1120" height="700" alt="Machine screen with CPU, memory, disk and network bars and a list of MCUs" loading="lazy">
+          <span class="card-text"><b>machine</b><kbd>F8</kbd><kbd>M</kbd><span>host, MCUs, services, power devices, reboot and shutdown.</span></span>
+        </a>
+        <a class="card" href="shots/software.webp" data-shot data-caption="Software · update manager and announcements (F9 / U)">
+          <img src="shots/software-thumb.webp" width="1120" height="700" alt="Software update list showing Moonraker, Klipper and other components" loading="lazy">
+          <span class="card-text"><b>software</b><kbd>F9</kbd><kbd>U</kbd><span>updates with streamed output, semver-aware. announcements too.</span></span>
+        </a>
+        <a class="card" href="shots/logs.webp" data-shot data-caption="Logs · klippy.log, moonraker.log and friends: follow, filter, roll over (F12 / L)">
+          <img src="shots/logs-thumb.webp" width="1120" height="700" alt="klippy.log tail showing MCU stats lines" loading="lazy">
+          <span class="card-text"><b>logs</b><kbd>F12</kbd><kbd>L</kbd><span>tail any log over HTTP, follow, filter, roll over.</span></span>
+        </a>
+        <a class="card" href="shots/config.webp" data-shot data-caption="Config · read any config file, edit it in $EDITOR, upload, restart (E)">
+          <img src="shots/config-thumb.webp" width="1120" height="700" alt="Config file list with printer.cfg selected" loading="lazy">
+          <span class="card-text"><b>config</b><kbd>E</kbd><span>open printer.cfg in your <code>$EDITOR</code>; save uploads it and offers a restart.</span></span>
+        </a>
+        <a class="card" href="shots/help.webp" data-shot data-caption="Help · every key, grouped, from the keymap registry (? / F1)">
+          <img src="shots/help-thumb.webp" width="1120" height="700" alt="Help overlay listing global, print job, Klipper and per-pane keys" loading="lazy">
+          <span class="card-text"><b>help</b><kbd>?</kbd><kbd>F1</kbd><span>every key, for the pane you're in, generated from the registry.</span></span>
+        </a>
+      </div>
+    </section>
+
+    <section id="setup" class="section" aria-labelledby="setup-title">
+      <h2 id="setup-title"><span class="hash">#</span> setup</h2>
+      <p class="section-lead"><kbd>F2</kbd> or <kbd>,</kbd> opens it. Your settings go in <code>~/.config/moontop/config.toml</code>; per-printer ones (names, hidden sensors, presets) live in Moonraker's database, so they follow the printer.</p>
+      <div class="setup" data-setup>
+        <ul class="setup-menu" role="tablist" aria-label="Setup categories">
+          <li><button role="tab" aria-selected="true" data-img="setup-panes" data-note="Show, hide, reorder and size panes.">panes</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-columns" data-note="Columns in Temperatures and Files.">columns</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-temperatures" data-note="Hide sensors you don't need; rename the rest. Saved to the printer.">temperatures</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-console" data-note="Console filters: heat-wait reports and TMC current lines hidden by default; add your own.">console</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-toolhead" data-note="Jog step sizes and feedrates.">toolhead</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-extruder" data-note="Load / unload commands, detected from the printer's macros unless you set them.">extruder</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-safety" data-note="Which dangerous actions ask first.">safety</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-presets" data-note="Heater presets: Moontop's live on the printer; Mainsail's are read and edited in place.">presets</button></li>
+          <li><button role="tab" aria-selected="false" data-img="setup-keys" data-note="Every key, from the keymap registry.">keys</button></li>
+        </ul>
+        <figure class="term setup-view">
+          <figcaption class="term-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>moontop · setup</span><span class="dim" id="setup-note">Show, hide, reorder and size panes.</span></figcaption>
+          <a href="shots/setup-panes.webp" data-shot data-caption="Setup · panes" id="setup-link">
+            <img src="shots/setup-panes-view.webp" width="2216" height="923" alt="Setup screen, panes category" id="setup-img">
+          </a>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section modes" aria-labelledby="modes-title">
+      <h2 id="modes-title"><span class="hash">#</span> four ways to run it</h2>
+      <pre class="term-block"><code><span class="ps1">$</span> moontop                       <span class="c"># full-screen dashboard</span>
+<span class="ps1">$</span> moontop console               <span class="c"># inline gcode console in this terminal, with history</span>
+<span class="ps1">$</span> moontop gcode G28 "M117 hi"   <span class="c"># one-shot gcode with exit codes, for scripts</span>
+<span class="ps1">$</span> echo BED_MESH_CALIBRATE | moontop gcode -echo
+<span class="ps1">$</span> moontop dump -prefix AFC      <span class="c"># printer objects as JSON</span>
+<span class="ps1">$</span> moontop version</code></pre>
+      <p class="section-lead small"><code>-host</code> defaults to <code>$MOONRAKER_HOST</code>. Moontop needs no SSH and nothing on the printer; Moonraker API keys aren't supported yet.</p>
+    </section>
+
+    <section id="install" class="section" aria-labelledby="install-title">
+      <h2 id="install-title"><span class="hash">#</span> install</h2>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><th>macOS / Linux</th><td><code>brew install --cask justinh-rahb/tap/moontop</code></td></tr>
+            <tr><th>Windows</th><td><code>scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket</code><br><code>scoop install moontop</code></td></tr>
+            <tr><th>Debian / Ubuntu / Pi OS</th><td><code>sudo apt install ./moontop_*.deb</code> <span class="dim">from <a href="https://github.com/justinh-rahb/moontop/releases/latest">releases ↗</a></span></td></tr>
+            <tr><th>Fedora · Alpine · Arch</th><td><span class="dim"><code>.rpm</code>, <code>.apk</code> and <code>.pkg.tar.zst</code> on <a href="https://github.com/justinh-rahb/moontop/releases/latest">releases ↗</a></span></td></tr>
+            <tr><th>any unix</th><td><code>curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code> <span class="dim">checks the checksum</span></td></tr>
+            <tr><th>Go 1.26+</th><td><code>go install github.com/justinh-rahb/moontop/cmd/moontop@latest</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-lead small">amd64 and arm64 everywhere, armv7 on Linux — so it runs on the Pi next to the printer, too. macOS builds aren't notarized yet; the Homebrew cask clears the quarantine flag for you.</p>
+    </section>
+
+    <section class="closing" aria-label="Project links">
+      <p><span class="ps1">$</span> open source, MIT. bugs, printer quirks and ideas welcome.</p>
+      <div class="closing-links">
+        <a class="button" href="https://github.com/justinh-rahb/moontop">github ↗</a>
+        <a class="button ghost" href="https://github.com/justinh-rahb/moontop/issues">issues ↗</a>
+        <a class="button ghost" href="https://buymeacoffee.com/wildtang3nt">buy me a coffee ↗</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer wrap">
+    <span><span class="moon" aria-hidden="true">◐</span> moontop</span>
+    <span>for <a href="https://www.klipper3d.org/">klipper</a> / <a href="https://moonraker.readthedocs.io/">moonraker</a> · sibling of <a href="https://justinh-rahb.github.io/retrograde/">retrograde</a></span>
+    <a href="https://github.com/justinh-rahb/moontop/blob/main/LICENSE">MIT ↗</a>
+  </footer>
+
+  <dialog id="viewer" aria-label="Screenshot viewer">
+    <div class="viewer-bar">
+      <span id="viewer-caption"></span>
+      <span class="viewer-ctl">
+        <button type="button" data-step="-1" aria-label="Previous screenshot">←</button>
+        <span id="viewer-count" class="dim"></span>
+        <button type="button" data-step="1" aria-label="Next screenshot">→</button>
+        <a id="viewer-full" href="#" target="_blank" rel="noopener">full ↗</a>
+        <button type="button" id="viewer-close" aria-label="Close">esc</button>
+      </span>
+    </div>
+    <div class="viewer-body"><img id="viewer-img" alt=""></div>
+  </dialog>
+</body>
+</html>

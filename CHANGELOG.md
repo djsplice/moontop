@@ -48,6 +48,8 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
 - `moontop version`, release builds for Linux, macOS, Windows and FreeBSD,
   Homebrew cask, Scoop manifest, deb / rpm / apk / Arch packages and an
   install script.
+- Project website (GitHub Pages, from `docs/`) with screenshots of every
+  screen.
 
 ### Changed
 

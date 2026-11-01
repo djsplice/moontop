@@ -74,7 +74,8 @@ internal/moonraker/moonrakertest/   fake Moonraker for tests
 internal/config/        config.toml and per-printer settings
 internal/console/       line classification, filters, history, backfill
 internal/afc, macros, prompt, spark, moo   self-contained helpers with their own tests
-docs/                   ROADMAP.md (phase plan and status), UI-PLAN.md, RELEASING.md
+docs/                   ROADMAP.md (phase plan and status), UI-PLAN.md, RELEASING.md,
+                        and the GitHub Pages site (index.html, site.css, site.js, shots/)
 ```
 
 ## Rules the code follows

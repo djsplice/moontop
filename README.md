@@ -12,7 +12,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/wildtang3nt)
 
-[Install](#install) · [Quick start](#quick-start) · [The dashboard](#the-dashboard) · [Screens](#full-screen-tools) · [Keys](#keyboard-reference) · [Settings](#settings) · [Printers](#printer-support)
+[Website](https://justinh-rahb.github.io/moontop/) · [Install](#install) · [Quick start](#quick-start) · [The dashboard](#the-dashboard) · [Screens](#full-screen-tools) · [Keys](#keyboard-reference) · [Settings](#settings) · [Printers](#printer-support)
 
 </div>
 
@@ -630,7 +630,7 @@ internal/
   macros/                macro parameters from templates
   prompt/                action:prompt_* parser
   spark/                 braille sparklines
-docs/                    ROADMAP.md (Mainsail gap audit, phases), UI-PLAN.md, RELEASING.md
+docs/                    ROADMAP.md, UI-PLAN.md, RELEASING.md; the website (index.html, shots/)
 testdata/                printer status fixtures (a U1's AFC-Lite)
 ```
 
