@@ -105,23 +105,23 @@ func bind(keys []string, help, desc string) *key.Binding {
 
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
-	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine, Updates, BedMesh, Logs, Config *key.Binding
-	Pause, Resume, Cancel, Exclude                                                                                      *key.Binding
-	Restart, FwRestart                                                                                                  *key.Binding
-	Confirm, Deny, HelpScroll                                                                                           *key.Binding
-	FilesMove, FilesFilter, FilesStart, FilesQueue, FilesManage                                                         *key.Binding
-	JogX, JogY, JogZ, StepDown, StepUp                                                                                  *key.Binding
-	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                                                   *key.Binding
-	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                                             *key.Binding
-	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                                                      *key.Binding
-	OutputOff, LEDColor                                                                                                 *key.Binding
-	Macros, MacroMove, MacroRun, MacroUnpin                                                                             *key.Binding
-	FilLoad, FilUnload, Level, Endstops                                                                                 *key.Binding
-	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                                                 *key.Binding
-	TempEditType, TempEditApply, TempEditCancel                                                                         *key.Binding
-	ConsoleSend, ConsoleHistory                                                                                         *key.Binding
-	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                                                     *key.Binding
-	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                                                  *key.Binding
+	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine, Updates, BedMesh, Logs, Config, Printers *key.Binding
+	Pause, Resume, Cancel, Exclude                                                                                                *key.Binding
+	Restart, FwRestart                                                                                                            *key.Binding
+	Confirm, Deny, HelpScroll                                                                                                     *key.Binding
+	FilesMove, FilesFilter, FilesStart, FilesQueue, FilesManage                                                                   *key.Binding
+	JogX, JogY, JogZ, StepDown, StepUp                                                                                            *key.Binding
+	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                                                             *key.Binding
+	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                                                       *key.Binding
+	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                                                                *key.Binding
+	OutputOff, LEDColor                                                                                                           *key.Binding
+	Macros, MacroMove, MacroRun, MacroUnpin                                                                                       *key.Binding
+	FilLoad, FilUnload, Level, Endstops                                                                                           *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                                                           *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                                                                                   *key.Binding
+	ConsoleSend, ConsoleHistory                                                                                                   *key.Binding
+	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                                                               *key.Binding
+	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                                                            *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
@@ -138,6 +138,7 @@ var keys = struct {
 	BedMesh:      bind([]string{"f11", "B"}, "F11/B", "bed mesh: grid, profiles, calibrate, screws tilt"),
 	Logs:         bind([]string{"f12", "L"}, "F12/L", "logs: klippy.log, moonraker.log… (follow, filter, roll over)"),
 	Config:       bind([]string{"E"}, "E", "config files: read, edit in $EDITOR"),
+	Printers:     bind([]string{"P"}, "P", "printers: back to the connection screen to switch"),
 
 	Pause:   bind([]string{"p"}, "p", "pause print"),
 	Exclude: bind([]string{"f4", "O"}, "O/F4", "objects: exclude one from the print (confirms)"),
@@ -261,6 +262,7 @@ var registry = []keyEntry{
 	{b: keys.Macros, scope: scopeGlobal},
 	{b: keys.Jobs, scope: scopeGlobal},
 	{b: keys.Machine, scope: scopeGlobal},
+	{b: keys.Printers, scope: scopeGlobal},
 	{b: keys.Updates, scope: scopeGlobal},
 	{b: keys.BedMesh, scope: scopeGlobal, when: hasBedMesh},
 	{b: keys.Logs, scope: scopeGlobal},

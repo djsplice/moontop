@@ -258,7 +258,7 @@ func TestConnectClientUsesSavedCredentials(t *testing.T) {
 	if err := h.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	c, host, err := connectClient("http://"+srv.Host()+"/", false)
+	c, host, err := connectClient("http://"+srv.Host()+"/", false, true)
 	if err != nil || c == nil || host != srv.Host() {
 		t.Fatalf("connectClient = %v %q %v", c, host, err)
 	}
@@ -303,3 +303,72 @@ func mustHosts(t *testing.T, path string) *config.Hosts {
 }
 
 var _ = moonraker.ErrUnauthorized
+
+func TestConnectDefaultHost(t *testing.T) {
+	now := time.Now()
+	m, path := connModel(t,
+		config.HostEntry{Host: "a:7125", LastUsed: now},
+		config.HostEntry{Host: "b:7125", LastUsed: now.Add(-time.Hour)},
+	)
+	if !strings.Contains(m.View(), "ctrl+s connect at start") {
+		t.Fatalf("footer lacks the default key:\n%s", m.View())
+	}
+	m = connKey(t, m, "down")
+	out, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = out.(connectModel)
+	if !m.hosts.IsDefault("b:7125") || !strings.Contains(m.View(), "[default]") || !strings.Contains(m.View(), "connects to it at start") {
+		t.Fatalf("default not set:\n%s", m.View())
+	}
+	if mustHosts(t, path).Default != "b:7125" {
+		t.Fatal("default not saved")
+	}
+	out, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = out.(connectModel)
+	if m.hosts.Default != "" || mustHosts(t, path).Default != "" {
+		t.Fatal("ctrl+s again should clear the default")
+	}
+}
+
+// With a default, start-up connects to it without the screen; the
+// connection screen reached from the dashboard (useDefault false) and
+// -host don't use it.
+func TestConnectClientUsesDefault(t *testing.T) {
+	srv := moonrakertest.New(t)
+	t.Setenv("MOONRAKER_API_KEY", "")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path, _ := config.DefaultHostsPath()
+	h := &config.Hosts{}
+	h.Touch(config.HostEntry{Host: srv.Host()}, time.Now())
+	h.ToggleDefault(srv.Host())
+	if err := h.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	c, host, err := connectClient("", false, true)
+	if err != nil || c == nil || host != srv.Host() {
+		t.Fatalf("default: %v %q %v", c, host, err)
+	}
+	c.Close()
+	// Unreachable default without a terminal: an error, not a hang.
+	srv.Close()
+	if _, _, err := connectClient("", false, true); err == nil {
+		t.Fatal("unreachable default should fail without a terminal")
+	}
+}
+
+func TestPrintersKeyLeavesForTheConnectScreen(t *testing.T) {
+	m := readyModel(t, fakePrinter(t))
+	m, cmd := updateCmd(t, m, keyRunes("P"))
+	if !m.switchPrinter || cmd == nil {
+		t.Fatal("P didn't ask to switch printers")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("P should end this dashboard")
+	}
+	// Typing in the console, P is just a letter.
+	m = readyModel(t, fakePrinter(t))
+	m = press(t, m, "5")
+	m, _ = updateCmd(t, m, keyRunes("P"))
+	if m.switchPrinter {
+		t.Fatal("P in the console switched printers")
+	}
+}

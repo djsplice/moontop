@@ -15,6 +15,9 @@ import (
 // its own file with owner-only permissions, apart from config.toml.
 type Hosts struct {
 	Entries []HostEntry `json:"hosts"`
+	// Default is the host to connect to at start, skipping the
+	// connection screen ("" = always show it).
+	Default string `json:"default,omitempty"`
 }
 
 // HostEntry is one remembered printer.
@@ -115,9 +118,26 @@ func (h *Hosts) Touch(e HostEntry, now time.Time) {
 	}
 }
 
-// Forget removes a host.
+// Forget removes a host (and its default status).
 func (h *Hosts) Forget(host string) {
 	if i := h.index(host); i >= 0 {
 		h.Entries = append(h.Entries[:i], h.Entries[i+1:]...)
 	}
+	if strings.EqualFold(h.Default, host) {
+		h.Default = ""
+	}
+}
+
+// IsDefault reports whether host is the start-up default.
+func (h *Hosts) IsDefault(host string) bool {
+	return h.Default != "" && strings.EqualFold(h.Default, host)
+}
+
+// ToggleDefault makes host the default, or clears it if it already is.
+func (h *Hosts) ToggleDefault(host string) {
+	if h.IsDefault(host) {
+		h.Default = ""
+		return
+	}
+	h.Default = host
 }

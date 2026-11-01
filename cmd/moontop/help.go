@@ -210,6 +210,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openLogs()
 		case key.Matches(msg, *keys.Config):
 			return m, m.openConfig()
+		case key.Matches(msg, *keys.Printers):
+			// Leave this printer for the connection screen
+			// (runDashboard reconnects). Nothing is sent to the
+			// printer; a print carries on without us.
+			m.switchPrinter = true
+			return m, tea.Quit
 		case key.Matches(msg, *keys.BedMesh):
 			if ok, why := hasBedMesh(&m); !ok {
 				m.appendLog("!! bed mesh: only " + why)

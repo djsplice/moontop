@@ -54,3 +54,29 @@ func TestDefaultHostsPathHonoursXDG(t *testing.T) {
 		t.Fatal(p)
 	}
 }
+
+func TestHostsDefault(t *testing.T) {
+	h := &Hosts{}
+	h.Touch(HostEntry{Host: "a:7125"}, time.Unix(1, 0))
+	h.ToggleDefault("a:7125")
+	if !h.IsDefault("A:7125") {
+		t.Fatal("not default")
+	}
+	path := filepath.Join(t.TempDir(), "hosts.json")
+	if err := h.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := LoadHosts(path)
+	if got.Default != "a:7125" {
+		t.Fatalf("default not saved: %+v", got)
+	}
+	got.ToggleDefault("a:7125")
+	if got.Default != "" {
+		t.Fatal("toggle should clear")
+	}
+	got.ToggleDefault("a:7125")
+	got.Forget("a:7125")
+	if got.Default != "" {
+		t.Fatal("forgetting the default host should clear it")
+	}
+}

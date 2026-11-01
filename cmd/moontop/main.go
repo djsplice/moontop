@@ -257,7 +257,11 @@ type model struct {
 	viewport viewport.Model
 	input    textinput.Model
 	files    list.Model
-	progress progress.Model
+
+	// switchPrinter: P was pressed; runDashboard goes back to the
+	// connection screen instead of exiting.
+	switchPrinter bool
+	progress      progress.Model
 
 	// Tuning and Extruder field lists (see fields.go); extrude length
 	// and speed are this session's choice, not printer state.
@@ -1882,22 +1886,32 @@ func runDashboard(args []string) int {
 	cfg, cfgPath := loadConfig(*cfgFlag)
 	applyTheme(cfg.Display.Theme)
 
-	client, h, err := connectClient(hostOrEnv(*host), false)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "moontop: connect to %s: %v\n", h, err)
-		return 2
+	// P in the dashboard comes back to the connection screen; the
+	// first connection may go straight to the default printer.
+	hostArg, useDefault := hostOrEnv(*host), true
+	for {
+		client, h, err := connectClient(hostArg, false, useDefault)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "moontop: connect to %s: %v\n", h, err)
+			return 2
+		}
+		if client == nil {
+			return 0
+		}
+		m := initialModel(client)
+		m.cfg, m.cfgPath = cfg, cfgPath
+		m.applySettings()
+		final, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
+		client.Close()
+		if err != nil {
+			log.Printf("TUI error: %v", err)
+			return 1
+		}
+		fm, ok := final.(model)
+		if !ok || !fm.switchPrinter {
+			return 0
+		}
+		cfg = fm.cfg // keep settings changed in this session
+		hostArg, useDefault = "", false
 	}
-	if client == nil {
-		return 0
-	}
-
-	m := initialModel(client)
-	m.cfg, m.cfgPath = cfg, cfgPath
-	m.applySettings()
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		log.Printf("TUI error: %v", err)
-		return 1
-	}
-	return 0
 }

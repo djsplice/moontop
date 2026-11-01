@@ -56,7 +56,7 @@ const (
 )
 
 type connectKeys struct {
-	Connect, Up, Down, Next, Prev, Toggle, Forget, Back, Quit key.Binding
+	Connect, Up, Down, Next, Prev, Toggle, Forget, Default, Back, Quit key.Binding
 }
 
 var connKeys = connectKeys{
@@ -67,6 +67,7 @@ var connKeys = connectKeys{
 	Prev:    key.NewBinding(key.WithKeys("shift+tab", "up")),
 	Toggle:  key.NewBinding(key.WithKeys("left", "right", " "), key.WithHelp("←→", "change")),
 	Forget:  key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "forget")),
+	Default: key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "connect at start")),
 	Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 	Quit:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 }
@@ -83,6 +84,7 @@ type connectModel struct {
 	target  string // normalized host being connected to
 	busy    string // "connecting…", "signing in…"
 	errText string
+	info    string // a passing note (default set / cleared)
 
 	// auth form
 	method  authMethod
@@ -270,6 +272,17 @@ func (m connectModel) updateHost(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, connKeys.Down) && n > 0:
 		m.sel = (m.sel + 1) % n
 		m.pick()
+		return m, nil
+	case key.Matches(msg, connKeys.Default) && m.sel >= 0 && m.sel < n:
+		h := m.hosts.Entries[m.sel].Host
+		m.hosts.ToggleDefault(h)
+		m.save()
+		if m.hosts.IsDefault(h) {
+			m.errText = ""
+			m.info = h + " is the default: Moontop connects to it at start (P in the dashboard comes back here)"
+		} else {
+			m.info = "no default: Moontop starts here"
+		}
 		return m, nil
 	case key.Matches(msg, connKeys.Forget) && m.sel >= 0 && m.sel < n:
 		m.hosts.Forget(m.hosts.Entries[m.sel].Host)
@@ -512,10 +525,13 @@ func (m connectModel) view() string {
 	} else {
 		body = m.viewAuth()
 	}
-	if m.busy != "" {
+	switch {
+	case m.busy != "":
 		body = append(body, "", consoleNoticeStyle.Render(m.busy))
-	} else if m.errText != "" {
+	case m.errText != "":
 		body = append(body, "", consoleErrStyle.Render(m.errText))
+	case m.info != "":
+		body = append(body, "", consoleInfoStyle.Render(m.info))
 	}
 	b.WriteString(pad.Render(strings.Join(body, "\n")))
 	b.WriteString("\n\n")
@@ -555,6 +571,9 @@ func (m connectModel) viewHost() []string {
 			line += consoleNoticeStyle.Render(" api key")
 		case e.RefreshToken != "":
 			line += consoleNoticeStyle.Render(" signed in as " + e.Username)
+		}
+		if m.hosts.IsDefault(e.Host) {
+			line += jogStepStyle.Render("  [default]")
 		}
 		out = append(out, line)
 	}
@@ -605,7 +624,7 @@ func (m connectModel) footer() string {
 	if m.stage == stageHost {
 		parts = []string{hint(connKeys.Connect)}
 		if len(m.hosts.Entries) > 0 {
-			parts = append(parts, hint(connKeys.Up), hint(connKeys.Forget))
+			parts = append(parts, hint(connKeys.Up), hint(connKeys.Default), hint(connKeys.Forget))
 		}
 		parts = append(parts, footerFocusStyle.Render("esc")+footerText.Render(" quit"))
 	} else {
@@ -646,10 +665,19 @@ func savedCredentials(host string) moonraker.Credentials {
 	return moonraker.Credentials{}
 }
 
-// connectClient connects to host (from -host / $MOONRAKER_HOST), or runs
-// the connection manager when there's none or the host wants a sign-in.
-// It returns a nil client when the user quit.
-func connectClient(host string, inline bool) (*moonraker.Client, string, error) {
+// connectClient connects to host (from -host / $MOONRAKER_HOST), or to
+// the default printer when useDefault is set, or runs the connection
+// manager: when there's neither, when the host wants a sign-in, or when
+// the default can't be reached. It returns a nil client when the user
+// quit.
+func connectClient(host string, inline, useDefault bool) (*moonraker.Client, string, error) {
+	viaDefault := false
+	if host == "" && useDefault {
+		if hosts, _ := loadHosts(); hosts.Default != "" {
+			host, viaDefault = hosts.Default, true
+		}
+	}
+	var dialErr error
 	if host != "" {
 		host = moonraker.NormalizeHost(host)
 		c, err := moonraker.NewWithCredentials(host, savedCredentials(host))
@@ -665,8 +693,12 @@ func connectClient(host string, inline bool) (*moonraker.Client, string, error) 
 			}
 			return c, host, nil
 		}
-		if !errors.Is(err, moonraker.ErrUnauthorized) || !isTerminal(os.Stdin) {
+		unauthorized := errors.Is(err, moonraker.ErrUnauthorized)
+		if !isTerminal(os.Stdin) || !unauthorized && !viaDefault {
 			return nil, host, err
+		}
+		if !unauthorized {
+			dialErr = err
 		}
 	}
 	hosts, path := loadHosts()
@@ -675,7 +707,11 @@ func connectClient(host string, inline bool) (*moonraker.Client, string, error) 
 	if !inline {
 		opts = append(opts, tea.WithAltScreen())
 	}
-	if host != "" {
+	switch {
+	case dialErr != nil:
+		// The default printer is off or away: say so, offer the rest.
+		m.errText = host + " (your default): " + friendlyDialError(dialErr)
+	case host != "":
 		// Straight to the sign-in form for the host that refused us.
 		m.host.SetValue(host)
 		m.target, m.busy = host, "connecting to "+host+"…"

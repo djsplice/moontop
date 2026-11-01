@@ -46,7 +46,7 @@ func runConsole(args []string) int {
 	log.SetOutput(io.Discard)
 	cfg, _ := loadConfig(*cfgFlag)
 	applyTheme(cfg.Display.Theme)
-	client, h, err := connectClient(hostOrEnv(*host), true)
+	client, h, err := connectClient(hostOrEnv(*host), true, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "moontop console: connect to %s: %v\n", h, err)
 		return 2

@@ -108,7 +108,7 @@ Moontop is one static binary with nothing to install on the printer.
 
 | Platform | Command |
 | --- | --- |
-| **Linux, macOS, FreeBSD** | `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh \| sh` |
+| **Linux, macOS, FreeBSD** | `curl -fsSL https://justinh-rahb.github.io/moontop/install.sh \| sh` |
 | **Anywhere with Go 1.26+** | `go install github.com/justinh-rahb/moontop/cmd/moontop@latest` |
 | **Windows** | unzip `moontop_*_windows_amd64.zip` (or `arm64`) from [Releases](https://github.com/justinh-rahb/moontop/releases/latest) and put `moontop.exe` on your `PATH` |
 
@@ -133,7 +133,7 @@ go build -o moontop ./cmd/moontop
 
 ## Quick start
 
-Run `moontop` and it opens the **connection manager**: type the printer's address (`voron.local`, `192.168.1.100`, `:7125` is assumed, `https://` for a printer behind TLS), or pick one of the printers you've used before — the last one is already selected, so most days it's just **`enter`**. `ctrl+d` forgets a printer.
+Run `moontop` and it opens the **connection manager**: type the printer's address (`voron.local`, `192.168.1.100`, `:7125` is assumed, `https://` for a printer behind TLS), or pick one of the printers you've used before — the last one is already selected, so most days it's just **`enter`**. `ctrl+s` makes the selected printer the default, so Moontop connects to it straight away at start (`ctrl+s` again clears it); `ctrl+d` forgets a printer. From the dashboard, **`P`** comes back to this screen to switch printers.
 
 ```sh
 moontop                              # connection manager
@@ -536,6 +536,7 @@ Press **`?`** in the dashboard for the complete, always-current list — it's ge
 | `?` `F1` · `F2` `,` | Help · setup |
 | `F3` `g` · `J` `F7` · `M` `F8` · `U` `F9` · `B` `F11` · `L` `F12` · `E` | Macros · jobs and files · machine · software · bed mesh · logs · config |
 | `Ctrl+O` | Show / hide filtered console lines |
+| `P` | Back to the connection screen, to switch printers |
 | `q` `F10` `Ctrl+C` | Quit |
 
 | Print and Klipper | |
