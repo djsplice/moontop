@@ -20,7 +20,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -51,7 +51,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.changelog.outputs.skip == 'false'
         with:
           go-version-file: go.mod
@@ -68,7 +68,7 @@ jobs:
           git tag -a "${{ steps.changelog.outputs.tag }}" -m "moontop ${{ steps.changelog.outputs.tag }}"
           git push origin "${{ steps.changelog.outputs.tag }}"
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         if: steps.changelog.outputs.skip == 'false'
         with:
           distribution: goreleaser
