@@ -22,8 +22,11 @@ func updatesPrinter(t *testing.T, oldMoonraker bool) *moonrakertest.Server {
 			map[string]any{"sha": "abcdef1234", "subject": "toolhead: faster lookahead", "author": "Kevin"},
 			map[string]any{"sha": "1234567890", "subject": "docs: typo", "author": "Someone"},
 		}},
-		"mainsail": map[string]any{"version": "v2.12.0", "remote_version": "v2.13.0", "configured_type": "web"},
+		"mainsail":  map[string]any{"version": "v2.12.0", "remote_version": "v2.13.0", "configured_type": "web"},
 		"crowsnest": map[string]any{"version": "v4.1.0", "remote_version": "v4.1.0", "is_dirty": true},
+		// Seen on a real printer: a beta ahead of the latest release.
+		"helixscreen":     map[string]any{"version": "v1.1.0-beta.14", "remote_version": "v1.1.0-beta.11", "configured_type": "zip"},
+		"mainsail-config": map[string]any{"version": "v1.2.1-1", "remote_version": "v1.2.1-1", "commits_behind": []any{}},
 	}}))
 	srv.Handle("server.announcements.list", moonrakertest.Result(map[string]any{"entries": []any{
 		map[string]any{"entry_id": "arksine/moonlight/issue/3", "title": "Klipper 0.13 is out", "description": "Lots of changes. Read the release notes before updating.", "url": "https://example.org/notes", "priority": "high", "date": 1.73e9, "feed": "klipper"},
@@ -62,7 +65,7 @@ func TestUpdates(t *testing.T) {
 		}
 	}
 	// Order: system, moonraker, klipper, then by name.
-	if strings.Join(m.updateNames(), ",") != "system,moonraker,klipper,crowsnest,mainsail" {
+	if strings.Join(m.updateNames(), ",") != "system,moonraker,klipper,crowsnest,helixscreen,mainsail,mainsail-config" {
 		t.Fatalf("order %v", m.updateNames())
 	}
 	// Up to date: refused. Klipper: its commits show; enter confirms.
@@ -134,5 +137,43 @@ func TestUpgradeFallsBackOnOldMoonraker(t *testing.T) {
 	}
 	if len(srv.CallsTo("machine.update.klipper")) != 1 || len(srv.CallsTo("machine.update.client")) != 1 {
 		t.Fatal("no fallback to the per-kind endpoints")
+	}
+}
+
+func TestVersionNewer(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"v2.13.0", "v2.12.0", true},
+		{"v1.1.0-beta.11", "v1.1.0-beta.14", false},
+		{"v1.1.0-beta.14", "v1.1.0-beta.11", true},
+		{"v1.1.0", "v1.1.0-beta.14", true},
+		{"v1.1.0-beta.14", "v1.1.0", false},
+		{"v1.10.0", "v1.9.9", true},
+		{"v1.2.1-1", "v1.2.1-1", false},
+	} {
+		if got := versionNewer(c.a, c.b); got != c.want {
+			t.Errorf("versionNewer(%s, %s) = %v", c.a, c.b, got)
+		}
+	}
+}
+
+func TestUpdatesColumnsAlign(t *testing.T) {
+	m := openUpdates(t, updatesPrinter(t, false))
+	col := -1
+	for _, l := range strings.Split(stripANSI(m.View()), "\n") {
+		for _, s := range []string{"up to date", "update available", "commits behind", "dirty", "packages to update"} {
+			if i := strings.Index(l, s); i >= 0 {
+				i = len([]rune(l[:i])) // columns, not bytes ("→" is three)
+				if col >= 0 && i != col {
+					t.Fatalf("state column at %d, then %d:\n%s", col, i, stripANSI(m.View()))
+				}
+				col = i
+			}
+		}
+	}
+	if st, avail := m.componentState("helixscreen"); avail {
+		t.Fatalf("helixscreen beta.14 with remote beta.11: %q", st)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,15 +129,72 @@ func (m *model) componentState(name string) (state string, available bool) {
 	case dig(e, "detached") == true:
 		return "detached", false
 	}
-	behind := len(stringListOrAny(dig(e, "commits_behind")))
 	cur, remote := digS(e, "version"), digS(e, "remote_version")
-	if behind > 0 {
-		return fmt.Sprintf("%d commits behind", behind), true
+	// Git repos: an update is commits behind (local commits ahead of
+	// the remote aren't one). Releases (web, zip): the remote version
+	// must be newer — a beta can be ahead of the latest release.
+	if behind, ok := dig(e, "commits_behind").([]any); ok {
+		if len(behind) > 0 {
+			return fmt.Sprintf("%d commits behind", len(behind)), true
+		}
+		return "up to date", false
 	}
-	if remote != "" && remote != "?" && cur != "" && remote != cur {
+	if remote != "" && remote != "?" && cur != "" && versionNewer(remote, cur) {
 		return "update available", true
 	}
 	return "up to date", false
+}
+
+// versionNewer reports whether a is a newer release than b, comparing
+// like semver: "v" dropped, dotted numbers numerically, and a release
+// newer than its pre-releases (1.1.0 > 1.1.0-beta.14 > 1.1.0-beta.11).
+func versionNewer(a, b string) bool { return compareVersions(a, b) > 0 }
+
+func compareVersions(a, b string) int {
+	split := func(v string) (core, pre []string) {
+		v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+		c, p, hasPre := strings.Cut(v, "-")
+		core = strings.Split(c, ".")
+		if hasPre {
+			pre = strings.Split(p, ".")
+		}
+		return
+	}
+	cmpParts := func(x, y []string) int {
+		for i := 0; i < max(len(x), len(y)); i++ {
+			if i >= len(x) {
+				return -1
+			}
+			if i >= len(y) {
+				return 1
+			}
+			xn, xerr := strconv.Atoi(x[i])
+			yn, yerr := strconv.Atoi(y[i])
+			switch {
+			case xerr == nil && yerr == nil && xn != yn:
+				return map[bool]int{true: 1, false: -1}[xn > yn]
+			case (xerr == nil) != (yerr == nil): // numbers sort before words
+				return map[bool]int{true: -1, false: 1}[xerr == nil]
+			case xerr != nil && x[i] != y[i]:
+				return map[bool]int{true: 1, false: -1}[x[i] > y[i]]
+			}
+		}
+		return 0
+	}
+	ac, ap := split(a)
+	bc, bp := split(b)
+	if c := cmpParts(ac, bc); c != 0 {
+		return c
+	}
+	switch {
+	case len(ap) == 0 && len(bp) == 0:
+		return 0
+	case len(ap) == 0:
+		return 1 // a release beats its pre-release
+	case len(bp) == 0:
+		return -1
+	}
+	return cmpParts(ap, bp)
 }
 
 func stringListOrAny(v any) []any {
@@ -311,8 +369,24 @@ func (m model) renderUpdates() string {
 	case u.tab == updTab:
 		names := m.updateNames()
 		cur := min(u.cursor[updTab], max(0, len(names)-1))
-		for i, nm := range names {
+		nameW, verW := 8, 10
+		vers := map[string]string{}
+		for _, nm := range names {
 			e := m.versionInfo()[nm]
+			ver := digS(e, "version")
+			if ver == "" || ver == "?" {
+				ver = digS(e, "full_version_string")
+			}
+			if _, avail := m.componentState(nm); avail {
+				if r := digS(e, "remote_version"); r != "" && r != "?" && r != ver {
+					ver += " → " + r
+				}
+			}
+			vers[nm] = ver
+			nameW = max(nameW, len(nm))
+			verW = max(verW, len([]rune(ver)))
+		}
+		for i, nm := range names {
 			mark, ns := "  ", footerText
 			if i == cur {
 				mark, ns = setupCursorStyle.Render("▸ "), jogStepStyle
@@ -325,11 +399,9 @@ func (m model) renderUpdates() string {
 			case state != "up to date":
 				st = consoleErrStyle
 			}
-			ver := digS(e, "version")
-			if r := digS(e, "remote_version"); avail && r != "" && r != "?" && r != ver {
-				ver += " → " + r
-			}
-			lines = append(lines, clipWidth(fmt.Sprintf("%s%s  %-34s  %s", mark, ns.Render(fmt.Sprintf("%-12s", nm)), ver, st.Render(state)), w))
+			ver := vers[nm]
+			pad := strings.Repeat(" ", verW-len([]rune(ver)))
+			lines = append(lines, clipWidth(fmt.Sprintf("%s%s  %s%s  %s", mark, ns.Render(fmt.Sprintf("%-*s", nameW, nm)), ver, pad, st.Render(state)), w))
 		}
 		if len(names) == 0 {
 			lines = append(lines, consoleInfoStyle.Render("The update manager lists nothing."))
