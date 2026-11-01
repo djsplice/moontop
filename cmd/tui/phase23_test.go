@@ -163,7 +163,7 @@ func TestUpdatesColumnsAlign(t *testing.T) {
 	m := openUpdates(t, updatesPrinter(t, false))
 	col := -1
 	for _, l := range strings.Split(stripANSI(m.View()), "\n") {
-		for _, s := range []string{"up to date", "update available", "commits behind", "dirty", "packages to update"} {
+		for _, s := range []string{"up to date", "update available", "2 commits", "dirty", "3 packages"} {
 			if i := strings.Index(l, s); i >= 0 {
 				i = len([]rune(l[:i])) // columns, not bytes ("→" is three)
 				if col >= 0 && i != col {
