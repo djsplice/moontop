@@ -64,6 +64,12 @@ edges. Single-printer, single-host, no auth, no persistence.
   service or switches a power device, `x` stops or starts a service,
   `R` reboots and `S` shuts down the host. Everything confirms; power
   devices locked while printing stay locked. Live while open.
+- **Software** — `U` (or `F9`): Moonraker's update manager (each
+  component's version, the version available, commits behind and their
+  subjects; `r` checks, `Enter` updates one, `a` updates all, with the
+  output streamed in as it runs; refused while printing) and Moonraker's
+  announcements (`d` dismisses). The dashboard title shows a badge when
+  updates or announcements are waiting.
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of

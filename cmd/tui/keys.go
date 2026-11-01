@@ -105,23 +105,23 @@ func bind(keys []string, help, desc string) *key.Binding {
 
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
-	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine *key.Binding
-	Pause, Resume, Cancel, Exclude                                                      *key.Binding
-	Restart, FwRestart                                                                  *key.Binding
-	Confirm, Deny, HelpScroll                                                           *key.Binding
-	FilesMove, FilesFilter, FilesStart, FilesQueue                                      *key.Binding
-	JogX, JogY, JogZ, StepDown, StepUp                                                  *key.Binding
-	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                   *key.Binding
-	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                             *key.Binding
-	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                      *key.Binding
-	OutputOff, LEDColor                                                                 *key.Binding
-	Macros, MacroMove, MacroRun, MacroUnpin                                             *key.Binding
-	FilLoad, FilUnload, Level                                                           *key.Binding
-	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                 *key.Binding
-	TempEditType, TempEditApply, TempEditCancel                                         *key.Binding
-	ConsoleSend, ConsoleHistory                                                         *key.Binding
-	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                     *key.Binding
-	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                  *key.Binding
+	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine, Updates *key.Binding
+	Pause, Resume, Cancel, Exclude                                                               *key.Binding
+	Restart, FwRestart                                                                           *key.Binding
+	Confirm, Deny, HelpScroll                                                                    *key.Binding
+	FilesMove, FilesFilter, FilesStart, FilesQueue                                               *key.Binding
+	JogX, JogY, JogZ, StepDown, StepUp                                                           *key.Binding
+	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                            *key.Binding
+	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                      *key.Binding
+	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                               *key.Binding
+	OutputOff, LEDColor                                                                          *key.Binding
+	Macros, MacroMove, MacroRun, MacroUnpin                                                      *key.Binding
+	FilLoad, FilUnload, Level                                                                    *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                          *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                                                  *key.Binding
+	ConsoleSend, ConsoleHistory                                                                  *key.Binding
+	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                              *key.Binding
+	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                           *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
@@ -134,6 +134,7 @@ var keys = struct {
 	Macros:       bind([]string{"f3", "g"}, "F3/g", "macros: all of them, filter, run, pin"),
 	Jobs:         bind([]string{"f7", "J"}, "F7/J", "jobs: print history, totals, job queue"),
 	Machine:      bind([]string{"f8", "M"}, "F8/M", "machine: host, MCUs, services, power devices"),
+	Updates:      bind([]string{"f9", "U"}, "F9/U", "software updates and announcements"),
 
 	Pause:   bind([]string{"p"}, "p", "pause print"),
 	Exclude: bind([]string{"f4", "O"}, "O/F4", "objects: exclude one from the print (confirms)"),
@@ -255,6 +256,7 @@ var registry = []keyEntry{
 	{b: keys.Macros, scope: scopeGlobal},
 	{b: keys.Jobs, scope: scopeGlobal},
 	{b: keys.Machine, scope: scopeGlobal},
+	{b: keys.Updates, scope: scopeGlobal},
 	{b: keys.EStop, scope: scopeGlobal, footer: true},
 	{b: keys.NextPane, scope: scopeGlobal, footer: true},
 	{b: keys.PrevPane, scope: scopeGlobal},

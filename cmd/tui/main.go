@@ -288,6 +288,7 @@ type model struct {
 
 	jobs     jobsScreen    // Phase 21: history and job queue
 	machine  machineScreen // Phase 22: host, MCUs, services, power
+	updates  updatesScreen // Phase 23: updates and announcements
 	extLen   float64
 	extSpeed float64
 
@@ -886,7 +887,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.klippyChanged()
 		// Presets, per-printer settings and the command list may have
 		// changed with the config; re-read them on every init.
-		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client), loadGcodeHelpCmd(m.client), loadTempStoreCmd(m.client))
+		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client), loadGcodeHelpCmd(m.client), loadTempStoreCmd(m.client), loadUpdatesCmd(m.client))
 
 	case gcodeHelpMsg:
 		if msg.err == nil {
@@ -976,6 +977,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm, cmd := m.progress.Update(msg)
 		m.progress = pm.(progress.Model)
 		return m, cmd
+
+	case updatesLoadedMsg:
+		m.onUpdatesLoaded(msg)
+		return m, nil
+
+	case updateActionMsg:
+		if msg.err != nil {
+			m.updates.running = ""
+			m.updates.log = append(m.updates.log, fmt.Sprintf("!! %s: %v", msg.what, msg.err))
+			m.appendLog(fmt.Sprintf("!! %s: %v", msg.what, msg.err))
+			return m, nil
+		}
+		m.appendLog("** " + msg.what)
+		return m, loadUpdatesCmd(m.client)
 
 	case machineLoadedMsg:
 		m.onMachineLoaded(msg)
@@ -1567,6 +1582,9 @@ func (m model) View() string {
 	if m.machine.open {
 		return m.renderMachine()
 	}
+	if m.updates.open {
+		return m.renderUpdates()
+	}
 	if m.prompt.Shown != nil && m.confirmation == nil {
 		return m.renderMacroPrompt()
 	}
@@ -1628,7 +1646,7 @@ func (m model) View() string {
 	}
 	body := bodyStyle.Render(stacked)
 
-	title := appTitleStyle.Render(appTitle)
+	title := appTitleStyle.Render(appTitle) + m.titleBadge()
 	var barView string
 	if m.job.State == "printing" {
 		barView = m.progress.View()

@@ -55,6 +55,10 @@ var notificationHandlers = map[string]notificationHandler{
 	moonraker.MethodProcStatUpdate:     (*model).onProcStats,
 	moonraker.MethodServiceChanged:     (*model).onServiceChanged,
 	moonraker.MethodPowerChanged:       (*model).onPowerChanged,
+	moonraker.MethodUpdateResponse:     (*model).onUpdateResponse,
+	moonraker.MethodUpdateRefreshed:    (*model).onUpdatesChanged,
+	moonraker.MethodAnnouncementUpdate: (*model).onUpdatesChanged,
+	moonraker.MethodAnnouncementGone:   (*model).onUpdatesChanged,
 }
 
 // listenNotifications blocks on one notification, then is re-issued by

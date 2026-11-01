@@ -19,6 +19,10 @@ const (
 	MethodProcStatUpdate     = "notify_proc_stat_update"
 	MethodServiceChanged     = "notify_service_state_changed"
 	MethodPowerChanged       = "notify_power_changed"
+	MethodUpdateResponse     = "notify_update_response"
+	MethodUpdateRefreshed    = "notify_update_refreshed"
+	MethodAnnouncementUpdate = "notify_announcement_update"
+	MethodAnnouncementGone   = "notify_announcement_dismissed"
 )
 
 // ParseStatusUpdate decodes notify_status_update params:
