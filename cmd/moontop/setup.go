@@ -78,6 +78,7 @@ func init() {
 		{name: "Safety", about: "Prompts before dangerous actions. Saved to the config file.", items: safetyItems},
 		{name: "Presets", about: "Preheat presets for t in Temperatures. Moontop's are saved to the printer; Mainsail's are edited in Mainsail.", items: presetItems,
 			add: &setupEdit{prompt: "Name for a preset of the current heater targets", apply: addPreset}, addAs: "save current targets as a preset"},
+		{name: "Display", about: "Colour scheme; space or enter switches, and it applies at once. Saved to the config file.", items: displayItems},
 		{name: "Keys", about: "Every key, from the keymap registry. Remapping comes later.", items: keyItems},
 	}
 }
@@ -119,6 +120,20 @@ func (m *model) editTemps(f func(t *config.Temperatures)) tea.Cmd {
 }
 
 // --- categories --------------------------------------------------------------
+
+func displayItems(m *model) []setupItem {
+	items := make([]setupItem, 0, len(themes))
+	for _, t := range themes {
+		name := t.name
+		items = append(items, setupItem{
+			label:  name,
+			check:  checked(currentTheme == name),
+			note:   t.about,
+			toggle: func(m *model) tea.Cmd { return m.setTheme(name) },
+		})
+	}
+	return items
+}
 
 func panesItems(m *model) []setupItem {
 	var items []setupItem

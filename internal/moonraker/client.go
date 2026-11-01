@@ -10,8 +10,10 @@ package moonraker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,7 +107,10 @@ type Notification struct {
 //     exits on a connection error, so any blocked call() returns
 //     promptly with an error rather than hanging forever.
 type Client struct {
-	host string
+	host string // host:port, or "https://host:port" for TLS
+
+	authMu sync.Mutex
+	creds  Credentials
 
 	// Auto-incrementing request ID.
 	nextID atomic.Int64
@@ -136,8 +141,15 @@ type Client struct {
 // New creates a new Client connected to the given host (host:port).
 // It dials ws://<host>/websocket and starts the background read loop.
 func New(host string) (*Client, error) {
+	return NewWithCredentials(host, Credentials{})
+}
+
+// NewWithCredentials connects like New, authenticating with cr. A
+// refused connection returns an error wrapping ErrUnauthorized.
+func NewWithCredentials(host string, cr Credentials) (*Client, error) {
 	c := &Client{
 		host:          host,
+		creds:         cr,
 		pending:       make(map[int64]chan *rpcResponse),
 		notifications: make(chan Notification, notificationBuffer),
 		disconnected:  make(chan error, 1),
@@ -153,17 +165,44 @@ func New(host string) (*Client, error) {
 // dial establishes a fresh websocket connection and swaps it into
 // c.conn under writeMu (so an in-flight write can't race with the swap).
 func (c *Client) dial() error {
-	url := fmt.Sprintf("ws://%s/websocket", c.host)
-	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	conn, _, err := dialer.Dial(url, nil)
+	cr := c.credentials()
+	if cr.AccessToken == "" && cr.RefreshToken != "" {
+		c.refresh()
+	}
+	conn, err := c.dialOnce()
+	if errors.Is(err, ErrUnauthorized) && c.refresh() {
+		conn, err = c.dialOnce()
+	}
 	if err != nil {
-		return fmt.Errorf("dial %s: %w", url, err)
+		return err
 	}
 	c.writeMu.Lock()
 	c.conn = conn
 	c.writeMu.Unlock()
 	return nil
 }
+
+func (c *Client) dialOnce() (*websocket.Conn, error) {
+	u := wsURL(c.host)
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second, Proxy: http.ProxyFromEnvironment}
+	h := http.Header{}
+	c.credentials().apply(h)
+	conn, resp, err := dialer.Dial(u, h)
+	if err != nil {
+		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
+			return nil, fmt.Errorf("dial %s: %w", u, ErrUnauthorized)
+		}
+		return nil, fmt.Errorf("dial %s: %w", u, err)
+	}
+	return conn, nil
+}
+
+// Host is the host the client dials.
+func (c *Client) Host() string { return c.host }
+
+// Credentials returns what the client authenticates with (the access
+// token may have been refreshed since it was created).
+func (c *Client) Credentials() Credentials { return c.credentials() }
 
 // notificationBuffer sizes the notification channel. Status diffs are
 // dropped (with a log line) if the consumer falls this far behind, so

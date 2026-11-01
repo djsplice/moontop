@@ -36,6 +36,13 @@ type Config struct {
 	Toolhead     Toolhead     `toml:"toolhead,omitempty"`
 	Safety       Safety       `toml:"safety,omitempty"`
 	Columns      Columns      `toml:"columns,omitempty"`
+	Display      Display      `toml:"display,omitempty"`
+}
+
+// Display: how Moontop looks. Theme is a colour scheme name ("" = the
+// default); see the Display category in setup for the list.
+type Display struct {
+	Theme string `toml:"theme,omitempty"`
 }
 
 // Panes: names as shown in pane titles ("Files", "Toolhead", "Tuning",

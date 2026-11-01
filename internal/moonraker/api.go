@@ -255,6 +255,7 @@ func (c *Client) GetServerInfo() (ServerInfo, error) {
 type PrinterInfo struct {
 	State        string `json:"state"`
 	StateMessage string `json:"state_message"`
+	Hostname     string `json:"hostname"`
 }
 
 // GetPrinterInfo wraps printer.info. Fails while Klippy is disconnected.

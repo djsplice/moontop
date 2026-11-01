@@ -154,7 +154,7 @@
 <span class="ps1">$</span> echo BED_MESH_CALIBRATE | moontop gcode -echo
 <span class="ps1">$</span> moontop dump -prefix AFC      <span class="c"># printer objects as JSON</span>
 <span class="ps1">$</span> moontop version</code></pre>
-      <p class="section-lead small"><code>-host</code> defaults to <code>$MOONRAKER_HOST</code>. Moontop needs no SSH and nothing on the printer; Moonraker API keys aren't supported yet.</p>
+      <p class="section-lead small">With no <code>-host</code> or <code>$MOONRAKER_HOST</code>, Moontop opens a connection manager with your recent printers. Moonraker logins and API keys work; nothing is installed on the printer.</p>
     </section>
 
     <section id="install" class="section" aria-labelledby="install-title">

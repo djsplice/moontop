@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/justinh-rahb/moontop/internal/moo"
@@ -111,16 +112,32 @@ func loadConfig(flagPath string) (config.Config, string) {
 }
 
 // resolveHost falls back to $MOONRAKER_HOST and explains when neither
-// is set.
+// is set. The dashboard and the line console use hostOrEnv instead and
+// open the connection manager.
 func resolveHost(flagVal string) (string, bool) {
-	if flagVal != "" {
-		return flagVal, true
-	}
-	if env := os.Getenv("MOONRAKER_HOST"); env != "" {
-		return env, true
+	if h := hostOrEnv(flagVal); h != "" {
+		return h, true
 	}
 	fmt.Fprintln(os.Stderr, "moontop: no printer host — pass -host ip:port or set MOONRAKER_HOST")
 	return "", false
+}
+
+func hostOrEnv(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv("MOONRAKER_HOST")
+}
+
+// dialHost connects a one-shot command (gcode, dump) with any saved
+// credentials for the host.
+func dialHost(h string) (*moonraker.Client, error) {
+	h = moonraker.NormalizeHost(h)
+	c, err := moonraker.NewWithCredentials(h, savedCredentials(h))
+	if errors.Is(err, moonraker.ErrUnauthorized) {
+		return nil, fmt.Errorf("%s needs a sign-in: run moontop -host %s once to sign in, or set MOONRAKER_API_KEY", h, h)
+	}
+	return c, err
 }
 
 // isTerminal reports whether f is a character device (a TTY) rather
@@ -158,7 +175,7 @@ func runGcode(args []string, stdin *os.File, stdout, stderr io.Writer) int {
 	// The client logs connection drops via the log package; in a
 	// script that's noise on stderr next to real errors.
 	log.SetOutput(io.Discard)
-	client, err := moonraker.New(h)
+	client, err := dialHost(h)
 	if err != nil {
 		fmt.Fprintf(stderr, "moontop gcode: connect to %s: %v\n", h, err)
 		return 2
@@ -230,7 +247,7 @@ func runDump(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	log.SetOutput(io.Discard)
-	client, err := moonraker.New(h)
+	client, err := dialHost(h)
 	if err != nil {
 		fmt.Fprintf(stderr, "moontop dump: connect to %s: %v\n", h, err)
 		return 2

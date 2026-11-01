@@ -11,6 +11,17 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
 
 ### Added
 
+- Connection manager: `moontop` (and `moontop console`) without a host opens
+  a screen to type an address or pick a recent printer, the last used one
+  preselected. Hosts are normalised (`voron.local` → `voron.local:7125`,
+  `https://` for TLS).
+- Moonraker authorization: sign in as a Moonraker user or with an API key
+  (also `$MOONRAKER_API_KEY`). Refresh tokens and keys are remembered per
+  printer in an owner-only `hosts.json`; passwords never are. Expired access
+  tokens are refreshed for the websocket and file transfers.
+- Colour schemes in setup → Display: `phosphor` (all green), `amber`,
+  `terminal` (your terminal's palette), `mono`, `solarized`, `gruvbox`,
+  `nord`, `dracula`, `catppuccin`, `tokyo-night` and `light`.
 - Dashboard with Status, Temperatures, Toolhead, Tuning, Files, Console, AFC,
   Macros, Extruder and Outputs panes, laid out by a configurable layout solver.
 - Klippy lifecycle handling: state banner, resubscribe on ready, restart and

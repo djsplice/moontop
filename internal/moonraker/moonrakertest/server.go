@@ -41,6 +41,8 @@ type Server struct {
 	conns    map[*websocket.Conn]*sync.Mutex
 	connCh   chan struct{}
 	http     map[string]http.HandlerFunc // plain HTTP, by path prefix
+
+	auth *fakeAuth // nil: every client is trusted
 }
 
 // HandleHTTP serves plain HTTP requests whose path starts with prefix
@@ -174,6 +176,9 @@ func (s *Server) Close() {
 var upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
+	if s.serveAuth(w, r) {
+		return
+	}
 	if r.URL.Path != "/websocket" {
 		s.mu.Lock()
 		var h http.HandlerFunc

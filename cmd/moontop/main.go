@@ -459,22 +459,21 @@ func initialModel(client *moonraker.Client) model {
 	ti.CharLimit = 256
 	ti.ShowSuggestions = true
 	ti.CompletionStyle = consoleInfoStyle
+	ti.PlaceholderStyle = consoleInfoStyle
 	// Up/down are history; ctrl+n / ctrl+p cycle completions.
 	ti.KeyMap.NextSuggestion.SetKeys("ctrl+n")
 	ti.KeyMap.PrevSuggestion.SetKeys("ctrl+p")
 
 	vp := viewport.New(40, 10)
 
-	files := list.New(nil, list.NewDefaultDelegate(), 40, 10)
+	files := list.New(nil, fileDelegate(), 40, 10)
 	files.Title = "" // we render our own pane title
 	files.SetShowTitle(false)
 	files.SetShowStatusBar(false)
 	files.SetShowHelp(false)
 	files.SetFilteringEnabled(true)
 
-	prog := progress.New(progress.WithDefaultGradient())
-	prog.ShowPercentage = false // we render percentage ourselves alongside ETA
-	prog.Width = 24
+	prog := newProgressBar()
 
 	m := model{
 		client:     client,
@@ -1406,17 +1405,7 @@ func (m *model) buildTable() {
 	// rows must always have as many cells as there are columns.
 	m.tempCols = []string{"state", "current", "target"}
 
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(true)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("236")).
-		Bold(false)
-	t.SetStyles(s)
+	t.SetStyles(tableStyles())
 
 	m.table = t
 }
@@ -1598,7 +1587,10 @@ func friendlyName(name string) string {
 // View
 // ---------------------------------------------------------------------------
 
-func (m model) View() string {
+// View is the dashboard, in the theme's text colour.
+func (m model) View() string { return tintView(m.view()) }
+
+func (m model) view() string {
 	if m.err != nil {
 		return errStyle.Render(fmt.Sprintf("\n  Error: %v\n\n", m.err)) +
 			footerStyle.Render("  Press ctrl+c to quit.\n")
@@ -1868,16 +1860,16 @@ func runDashboard(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	h, ok := resolveHost(*host)
-	if !ok {
-		return 2
-	}
 	cfg, cfgPath := loadConfig(*cfgFlag)
+	applyTheme(cfg.Display.Theme)
 
-	client, err := moonraker.New(h)
+	client, h, err := connectClient(hostOrEnv(*host), false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "moontop: connect to %s: %v\n", h, err)
 		return 2
+	}
+	if client == nil {
+		return 0
 	}
 
 	m := initialModel(client)

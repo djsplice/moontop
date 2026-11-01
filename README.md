@@ -134,22 +134,23 @@ go build -o moontop ./cmd/moontop
 
 ## Quick start
 
-Point it at Moonraker (usually port 7125):
+Run `moontop` and it opens the **connection manager**: type the printer's address (`voron.local`, `192.168.1.100`, `:7125` is assumed, `https://` for a printer behind TLS), or pick one of the printers you've used before — the last one is already selected, so most days it's just **`enter`**. `ctrl+d` forgets a printer.
 
 ```sh
-moontop -host 192.168.1.100:7125
+moontop                              # connection manager
+moontop -host 192.168.1.100:7125     # straight to that printer
 
-# or set it once
-export MOONRAKER_HOST=192.168.1.100:7125
-moontop
+export MOONRAKER_HOST=192.168.1.100:7125   # or set it once
 ```
+
+If Moonraker asks for authorization, Moontop asks you to sign in — as a Moonraker user, or with an API key (`$MOONRAKER_API_KEY` works too). The password is never stored: Moontop keeps Moonraker's refresh token, so you stay signed in. Remembered printers live in `~/.local/state/moontop/hosts.json`, readable only by you.
 
 Then press **`?`** for every key, or **`F2`** for settings. A few things worth knowing straight away:
 
 - **`Tab`** moves between panes; **`1`–`9`** jump to one (the numbers are in the pane titles).
 - **`Ctrl+X`** is the emergency stop, from anywhere.
 - **`q`** quits.
-- Moontop needs no SSH and nothing installed on the printer. Moonraker's API keys and login aren't supported yet.
+- Moontop needs no SSH and nothing installed on the printer.
 
 ---
 
@@ -162,7 +163,7 @@ Then press **`?`** for every key, or **`F2`** for settings. A few things worth k
 | `moontop gcode CMD…` | Run gcode, print Klipper's output, exit — for scripts and cron. |
 | `moontop dump [-prefix P]` | Print printer object status as JSON (bug reports, test fixtures). |
 
-All of them take `-host`, or read `$MOONRAKER_HOST`.
+All of them take `-host`, or read `$MOONRAKER_HOST`; with neither, the dashboard and the console open the connection manager. They all use what you signed in with there, or `$MOONRAKER_API_KEY`.
 
 <details>
 <summary><b><code>moontop console</code></b> — a gcode prompt in your terminal</summary>
@@ -552,11 +553,27 @@ Moontop is meant to be hard to hurt a printer with.
 | **Extruder** | Load and unload commands (empty = detect) | printer |
 | **Safety** | Confirm E-stop, confirm restarts when idle | config file |
 | **Presets** | Save the current targets as a preheat preset; delete | printer |
+| **Display** | Colour scheme | config file |
 | **Keys** | Every key (read-only; remapping comes later) | — |
+
+**Colour schemes**, switched live in setup → Display:
+
+| Scheme | |
+| --- | --- |
+| `moontop` | the default: blue panes, pink focus, amber accents |
+| `phosphor` | all green, like an old P1 phosphor monitor |
+| `amber` | all amber, like a P3 one |
+| `terminal` | your terminal's own 16 colours, so it follows whatever scheme you already use |
+| `mono` | greys, bold and dim only |
+| `solarized` · `gruvbox` · `nord` · `dracula` · `catppuccin` · `tokyo-night` | the popular ones |
+| `light` | for light terminal backgrounds |
 
 **The config file** is `~/.config/moontop/config.toml` (`$XDG_CONFIG_HOME` respected; `-config` picks another). It stores only what differs from the defaults and is safe to edit by hand. If it fails to parse, Moontop says so, runs on defaults, and won't overwrite it until it's fixed.
 
 ```toml
+[display]
+theme = "phosphor"
+
 [panes]
 order = ["Temperatures", "Files", "Toolhead", "Tuning"]
 hidden = ["Outputs"]
@@ -587,7 +604,7 @@ Moontop works with stock Klipper and Moonraker, and discovers what each printer 
 | **Vendor macros** | Everything a vendor adds shows up in the macro browser with its parameters. |
 | **Optional Moonraker components** | History, job queue, power devices, update manager and announcements appear only when enabled, and the screen says which section to add when one isn't. Older Moonraker update endpoints are used when the new one isn't there. |
 
-Not yet: Moonraker authentication (API keys, login), file upload and file management, webcams, thumbnails.
+Not yet: webcams, thumbnails.
 
 ---
 

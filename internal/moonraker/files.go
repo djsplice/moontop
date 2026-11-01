@@ -22,7 +22,7 @@ func (c *Client) fileURL(root, path string) string {
 	for i, s := range segs {
 		segs[i] = url.PathEscape(s)
 	}
-	return fmt.Sprintf("http://%s/server/files/%s/%s", c.host, root, strings.Join(segs, "/"))
+	return fmt.Sprintf("%s/server/files/%s/%s", httpBase(c.host), root, strings.Join(segs, "/"))
 }
 
 // ListRoot lists the files in a root (gcodes, config, logs), recursively.
@@ -47,7 +47,7 @@ func (c *Client) FetchFile(root, path string, tail int) ([]byte, bool, error) {
 	if tail > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=-%d", tail))
 	}
-	resp, err := httpClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, false, err
 	}
@@ -88,7 +88,12 @@ func (c *Client) UploadFile(root, path string, data []byte) error {
 	if err := w.Close(); err != nil {
 		return err
 	}
-	resp, err := httpClient.Post(fmt.Sprintf("http://%s/server/files/upload", c.host), w.FormDataContentType(), &body)
+	req, err := http.NewRequest(http.MethodPost, httpBase(c.host)+"/server/files/upload", bytes.NewReader(body.Bytes()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}

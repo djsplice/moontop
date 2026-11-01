@@ -42,17 +42,17 @@ func runConsole(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	h, ok := resolveHost(*host)
-	if !ok {
-		return 2
-	}
-
 	// Client log lines would be drawn into the middle of the prompt.
 	log.SetOutput(io.Discard)
-	client, err := moonraker.New(h)
+	cfg, _ := loadConfig(*cfgFlag)
+	applyTheme(cfg.Display.Theme)
+	client, h, err := connectClient(hostOrEnv(*host), true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "moontop console: connect to %s: %v\n", h, err)
 		return 2
+	}
+	if client == nil {
+		return 0
 	}
 
 	hist := console.NewHistory(0)
@@ -66,7 +66,6 @@ func runConsole(args []string) int {
 		}
 	}
 
-	cfg, _ := loadConfig(*cfgFlag)
 	m := newReplModel(client, h, hist, histPath)
 	m.filters = buildFilters(cfg.Console)
 	_, err = tea.NewProgram(m).Run()
