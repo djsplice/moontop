@@ -33,6 +33,7 @@ import (
 	"github.com/justinh-rahb/moonraker-tui/internal/macros"
 	"github.com/justinh-rahb/moonraker-tui/internal/moo"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
+	"github.com/justinh-rahb/moonraker-tui/internal/prompt"
 )
 
 // ---------------------------------------------------------------------------
@@ -268,8 +269,19 @@ type model struct {
 	macroCursor int
 	browser     macroBrowser
 	macroForm   *macroForm
-	extLen      float64
-	extSpeed    float64
+
+	// Phase 19: the macro prompt being shown (if any) and the exclude
+	// object list. promptLive: a prompt line arrived live, so the
+	// backfilled history mustn't override it.
+	prompt       prompt.State
+	promptCursor int
+	promptLive   bool
+	exclude      struct {
+		open   bool
+		cursor int
+	}
+	extLen   float64
+	extSpeed float64
 
 	// Console log lines; viewport content is rebuilt from this on append.
 	logLines []string
@@ -655,6 +667,9 @@ func (m model) initialize() tea.Cmd {
 			if isLevelingObject(name) {
 				subMap[name] = []string{"applied"}
 			}
+			if name == "exclude_object" {
+				subMap[name] = []string{"objects", "excluded_objects", "current_object"}
+			}
 			// Macro parameters live in their templates (configfile).
 			needSettings = needSettings || strings.HasPrefix(name, "gcode_macro ")
 		}
@@ -722,7 +737,7 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name):
+		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name), name == "exclude_object":
 			// Generic: store every reported field as-is.
 			raw.merge(name, fields)
 		case name == "webhooks":
@@ -922,6 +937,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Prepend: live lines may already have arrived while the
 		// request was in flight.
 		lines := console.BackfillLines(msg.entries)
+		// Prompt protocol lines never reach the console; an unfinished
+		// prompt in the history shows, unless one arrived live already.
+		if m.promptLive {
+			var scratch prompt.State
+			kept := lines[:0:0]
+			for _, l := range lines {
+				if !prompt.IsPromptLine(l) {
+					kept = append(kept, l)
+				} else {
+					scratch.Feed(l)
+				}
+			}
+			lines = kept
+		} else {
+			lines = m.feedPromptLines(lines)
+		}
 		if len(lines) > 0 {
 			lines = append(lines, "** ── live ──")
 			m.logLines = append(lines, m.logLines...)
@@ -933,6 +964,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm, cmd := m.progress.Update(msg)
 		m.progress = pm.(progress.Model)
 		return m, cmd
+
+	case echoThen:
+		m.appendLog(msg.line)
+		return m.Update(msg.msg)
 
 	case gcodeSentMsg:
 		if msg.err != nil {
@@ -1100,6 +1135,13 @@ func (m *model) handleJobControl(msg tea.KeyMsg) (tea.Cmd, bool) {
 		if m.job.State == "paused" {
 			return m.requireConnected("resume", m.resumePrint()), true
 		}
+		return nil, true
+	case key.Matches(msg, *keys.Exclude):
+		if ok, why := canExclude(m); !ok {
+			m.appendLog("!! objects: only " + why)
+			return nil, true
+		}
+		m.openExclude()
 		return nil, true
 	case key.Matches(msg, *keys.Cancel):
 		if jobActive(m.job.State) {
@@ -1452,6 +1494,12 @@ func (m model) View() string {
 	}
 	if m.browser.open {
 		return m.renderBrowser()
+	}
+	if m.exclude.open {
+		return m.renderExclude()
+	}
+	if m.prompt.Shown != nil && m.confirmation == nil {
+		return m.renderMacroPrompt()
 	}
 	if m.layout.mode == layoutMinimal {
 		return renderMinimal(m.width, m.height)

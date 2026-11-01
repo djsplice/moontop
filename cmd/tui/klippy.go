@@ -11,6 +11,7 @@ import (
 
 	"github.com/justinh-rahb/moonraker-tui/internal/console"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
+	"github.com/justinh-rahb/moonraker-tui/internal/prompt"
 )
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,12 @@ func (m *model) onGcodeResponse(params []json.RawMessage) tea.Cmd {
 		m.appendLog("!! " + err.Error())
 		return nil
 	}
-	m.appendLog(line)
+	if prompt.IsPromptLine(line) || strings.Contains(line, "action:prompt_") {
+		m.promptLive = true
+	}
+	for _, l := range m.feedPromptLines(strings.Split(line, "\n")) {
+		m.appendLog(l)
+	}
 	return nil
 }
 

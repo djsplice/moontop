@@ -35,6 +35,15 @@ edges. Single-printer, single-host, no auth, no persistence.
   output pins (`SET_PIN`; a percentage when PWM, on/off when digital, in
   the pin's own units when scaled) and LEDs (`SET_LED`; brightness, and
   a hex colour). Objects named `_something` are hidden, as in Mainsail.
+- **Macro prompts** — dialogs macros open with `RESPOND
+  MSG="action:prompt_…"` (the protocol Mainsail and Fluidd draw) take
+  the screen until the printer ends them: `←→`/`Tab` choose a button,
+  `Enter` presses it, `Esc` closes it (sends `prompt_end`, like
+  Mainsail's ✕). The protocol lines stay out of the console; an open
+  prompt in the console history shows when Moontop connects.
+- **Exclude object** — during a print with labelled objects, `O` (or
+  `F4`) lists them with the one printing now and those excluded;
+  `Enter` excludes one after a confirmation.
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of

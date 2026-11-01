@@ -92,6 +92,21 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// A macro prompt, then the exclude-object list, own the keyboard
+	// (E-stop and confirmations are handled above).
+	if m.prompt.Shown != nil {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handlePromptKey(msg)
+	}
+	if m.exclude.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleExcludeKey(msg)
+	}
+
 	// A one-line edit (AFC lane settings) owns the keyboard.
 	if m.lineEdit != nil {
 		if msg.String() == "ctrl+c" {

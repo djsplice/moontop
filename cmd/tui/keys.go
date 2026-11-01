@@ -106,7 +106,7 @@ func bind(keys []string, help, desc string) *key.Binding {
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
 	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter *key.Binding
-	Pause, Resume, Cancel                                                *key.Binding
+	Pause, Resume, Cancel, Exclude                                       *key.Binding
 	Restart, FwRestart                                                   *key.Binding
 	Confirm, Deny, HelpScroll                                            *key.Binding
 	FilesMove, FilesFilter, FilesStart                                   *key.Binding
@@ -133,9 +133,10 @@ var keys = struct {
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 	Macros:       bind([]string{"f3", "g"}, "F3/g", "macros: all of them, filter, run, pin"),
 
-	Pause:  bind([]string{"p"}, "p", "pause print"),
-	Resume: bind([]string{"r"}, "r", "resume print"),
-	Cancel: bind([]string{"c"}, "c", "cancel print (confirms)"),
+	Pause:   bind([]string{"p"}, "p", "pause print"),
+	Exclude: bind([]string{"f4", "O"}, "O/F4", "objects: exclude one from the print (confirms)"),
+	Resume:  bind([]string{"r"}, "r", "resume print"),
+	Cancel:  bind([]string{"c"}, "c", "cancel print (confirms)"),
 
 	// F5 / F6 work from every pane, including while the console takes
 	// text (where K and F are just letters).
@@ -259,6 +260,7 @@ var registry = []keyEntry{
 	{b: keys.Pause, scope: scopeJob, short: "pause", when: whilePrinting, footer: true},
 	{b: keys.Resume, scope: scopeJob, short: "resume", when: whilePaused, footer: true},
 	{b: keys.Cancel, scope: scopeJob, short: "cancel", when: whileJobActive, footer: true},
+	{b: keys.Exclude, scope: scopeJob, short: "objects", when: canExclude, footer: true},
 
 	{b: keys.Restart, scope: scopeKlipper},
 	{b: keys.FwRestart, scope: scopeKlipper},
