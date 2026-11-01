@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -132,22 +133,80 @@ func (c *Client) QueryEndstops() (map[string]string, error) {
 // ---------------------------------------------------------------------------
 
 // FileMetadata is what Moonraker parsed from a gcode file's slicer
-// comments. Fields the slicer didn't write are zero.
+// comments. Fields the slicer didn't write are zero. Slicers disagree on
+// types — some write "0.2" for a layer height, or a list for filament
+// type — so every field decodes leniently.
 type FileMetadata struct {
-	Slicer              string   `json:"slicer"`
-	SlicerVersion       string   `json:"slicer_version"`
-	EstimatedTime       float64  `json:"estimated_time"`
-	LayerHeight         float64  `json:"layer_height"`
-	FirstLayerHeight    float64  `json:"first_layer_height"`
-	ObjectHeight        float64  `json:"object_height"`
-	NozzleDiameter      float64  `json:"nozzle_diameter"`
-	FilamentTotal       float64  `json:"filament_total"` // mm
-	FilamentWeightTotal float64  `json:"filament_weight_total"`
-	FilamentType        string   `json:"filament_type"`
-	FilamentName        string   `json:"filament_name"`
-	FirstLayerExtrTemp  float64  `json:"first_layer_extr_temp"`
-	FirstLayerBedTemp   float64  `json:"first_layer_bed_temp"`
-	PrintStartTime      *float64 `json:"print_start_time"`
+	Slicer              Text `json:"slicer"`
+	SlicerVersion       Text `json:"slicer_version"`
+	EstimatedTime       Num  `json:"estimated_time"`
+	LayerHeight         Num  `json:"layer_height"`
+	FirstLayerHeight    Num  `json:"first_layer_height"`
+	ObjectHeight        Num  `json:"object_height"`
+	NozzleDiameter      Num  `json:"nozzle_diameter"`
+	FilamentTotal       Num  `json:"filament_total"` // mm
+	FilamentWeightTotal Num  `json:"filament_weight_total"`
+	FilamentType        Text `json:"filament_type"`
+	FilamentName        Text `json:"filament_name"`
+	FirstLayerExtrTemp  Num  `json:"first_layer_extr_temp"`
+	FirstLayerBedTemp   Num  `json:"first_layer_bed_temp"`
+	PrintStartTime      Num  `json:"print_start_time"`
+}
+
+// Num is a number that may arrive as a JSON number, a numeric string,
+// a list (the first number counts) or null; anything else is 0.
+type Num float64
+
+func (n *Num) UnmarshalJSON(b []byte) error {
+	*n = 0
+	var f float64
+	if json.Unmarshal(b, &f) == nil {
+		*n = Num(f)
+		return nil
+	}
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		s = strings.TrimSpace(strings.SplitN(strings.NewReplacer(",", ";").Replace(s), ";", 2)[0])
+		if v, err := strconv.ParseFloat(s, 64); err == nil {
+			*n = Num(v)
+		}
+		return nil
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(b, &list) == nil && len(list) > 0 {
+		return n.UnmarshalJSON(list[0])
+	}
+	return nil
+}
+
+// Text is a string that may arrive as a string, number, list (joined
+// with ", ") or null.
+type Text string
+
+func (t *Text) UnmarshalJSON(b []byte) error {
+	*t = ""
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*t = Text(s)
+		return nil
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(b, &list) == nil {
+		var parts []string
+		for _, r := range list {
+			var x Text
+			_ = x.UnmarshalJSON(r)
+			if x != "" {
+				parts = append(parts, string(x))
+			}
+		}
+		*t = Text(strings.Join(parts, ", "))
+		return nil
+	}
+	if string(b) != "null" {
+		*t = Text(strings.Trim(string(b), `"`))
+	}
+	return nil
 }
 
 // DirFile is a file in a directory listing, with its metadata when the

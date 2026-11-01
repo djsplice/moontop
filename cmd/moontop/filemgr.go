@@ -528,10 +528,10 @@ func (m model) renderFileMgr(w, rowsFit int) ([]string, string) {
 			ns = ns.Bold(true)
 		default:
 			size, mod = humanBytes(r.file.Size), fmTime(r.file.Modified)
-			if r.file.EstimatedTime > 0 {
-				est = shortDuration(r.file.EstimatedTime)
+			if float64(r.file.EstimatedTime) > 0 {
+				est = shortDuration(float64(r.file.EstimatedTime))
 			}
-			fil = formatFilament(r.file.FilamentTotal)
+			fil = formatFilament(float64(r.file.FilamentTotal))
 		}
 		row := mark + ns.Render(fmt.Sprintf("%-*s", nameW, ellipsizeMiddle(name, nameW)))
 		vals := []string{size, mod, est, fil}
@@ -607,31 +607,31 @@ func fileDetails(fl moonraker.DirFile, dir string) []string {
 	out = append(out, footerFocusStyle.Render(ellipsizeMiddle(fl.Name, 36)), "")
 	add(lab("Size", humanBytes(fl.Size)))
 	add(lab("Modified", fmTime(fl.Modified)))
-	if fl.EstimatedTime > 0 {
-		add(lab("Estimate", shortDuration(fl.EstimatedTime)))
+	if float64(fl.EstimatedTime) > 0 {
+		add(lab("Estimate", shortDuration(float64(fl.EstimatedTime))))
 	}
-	fil := formatFilament(fl.FilamentTotal)
-	if fl.FilamentWeightTotal > 0 {
-		fil += fmt.Sprintf(" · %.1f g", fl.FilamentWeightTotal)
+	fil := formatFilament(float64(fl.FilamentTotal))
+	if float64(fl.FilamentWeightTotal) > 0 {
+		fil += fmt.Sprintf(" · %.1f g", float64(fl.FilamentWeightTotal))
 	}
-	if fl.FilamentType != "" {
-		fil += " · " + fl.FilamentType
+	if string(fl.FilamentType) != "" {
+		fil += " · " + string(fl.FilamentType)
 	}
 	add(lab("Filament", strings.TrimPrefix(fil, " · ")))
-	layer := mm(fl.LayerHeight)
-	if fl.FirstLayerHeight > 0 && layer != "" {
-		layer += fmt.Sprintf(" (first %.2f)", fl.FirstLayerHeight)
+	layer := mm(float64(fl.LayerHeight))
+	if float64(fl.FirstLayerHeight) > 0 && layer != "" {
+		layer += fmt.Sprintf(" (first %.2f)", float64(fl.FirstLayerHeight))
 	}
 	add(lab("Layers", layer))
-	add(lab("Height", mm(fl.ObjectHeight)))
-	add(lab("Nozzle", mm(fl.NozzleDiameter)))
-	if fl.FirstLayerExtrTemp > 0 || fl.FirstLayerBedTemp > 0 {
-		add(lab("Temps", fmt.Sprintf("%.0f / %.0f °C", fl.FirstLayerExtrTemp, fl.FirstLayerBedTemp)))
+	add(lab("Height", mm(float64(fl.ObjectHeight))))
+	add(lab("Nozzle", mm(float64(fl.NozzleDiameter))))
+	if float64(fl.FirstLayerExtrTemp) > 0 || float64(fl.FirstLayerBedTemp) > 0 {
+		add(lab("Temps", fmt.Sprintf("%.0f / %.0f °C", float64(fl.FirstLayerExtrTemp), float64(fl.FirstLayerBedTemp))))
 	}
-	add(lab("Slicer", strings.TrimSpace(fl.Slicer+" "+fl.SlicerVersion)))
-	if fl.PrintStartTime != nil && *fl.PrintStartTime > 0 {
-		add(lab("Last print", fmTime(*fl.PrintStartTime)))
-	} else if fl.Slicer != "" {
+	add(lab("Slicer", strings.TrimSpace(string(fl.Slicer)+" "+string(fl.SlicerVersion))))
+	if fl.PrintStartTime > 0 {
+		add(lab("Last print", fmTime(float64(fl.PrintStartTime))))
+	} else if string(fl.Slicer) != "" {
 		add(lab("Last print", "never"))
 	}
 	if dir != "" {
@@ -643,17 +643,17 @@ func fileDetails(fl moonraker.DirFile, dir string) []string {
 // fileSummary is one line about a file, for narrow terminals.
 func fileSummary(fl moonraker.DirFile) string {
 	var parts []string
-	if fl.EstimatedTime > 0 {
-		parts = append(parts, "estimate "+shortDuration(fl.EstimatedTime))
+	if float64(fl.EstimatedTime) > 0 {
+		parts = append(parts, "estimate "+shortDuration(float64(fl.EstimatedTime)))
 	}
-	if s := formatFilament(fl.FilamentTotal); s != "" {
+	if s := formatFilament(float64(fl.FilamentTotal)); s != "" {
 		parts = append(parts, s+" filament")
 	}
-	if fl.LayerHeight > 0 {
-		parts = append(parts, fmt.Sprintf("%.2f mm layers", fl.LayerHeight))
+	if float64(fl.LayerHeight) > 0 {
+		parts = append(parts, fmt.Sprintf("%.2f mm layers", float64(fl.LayerHeight)))
 	}
-	if fl.Slicer != "" {
-		parts = append(parts, fl.Slicer)
+	if string(fl.Slicer) != "" {
+		parts = append(parts, string(fl.Slicer))
 	}
 	return strings.Join(parts, " · ")
 }
