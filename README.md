@@ -51,6 +51,13 @@ edges. Single-printer, single-host, no auth, no persistence.
   queue state (`s` starts or pauses it, `x` removes one); from Files,
   `a` queues the selected file. Both are optional Moonraker components
   (`[history]`, `[job_queue]`), and the screen says when one is off.
+- **Machine** — `M` (or `F8`): the host (board, OS, uptime, CPU load
+  and temperature, memory, disk, throttling, network), Moonraker's own
+  usage, every MCU (chip, firmware version, load, awake time,
+  frequency), and the services and power devices: `Enter` restarts a
+  service or switches a power device, `x` stops or starts a service,
+  `R` reboots and `S` shuts down the host. Everything confirms; power
+  devices locked while printing stay locked. Live while open.
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of

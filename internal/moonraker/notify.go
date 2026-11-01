@@ -16,6 +16,9 @@ const (
 	MethodKlippyDisconnected = "notify_klippy_disconnected"
 	MethodHistoryChanged     = "notify_history_changed"
 	MethodJobQueueChanged    = "notify_job_queue_changed"
+	MethodProcStatUpdate     = "notify_proc_stat_update"
+	MethodServiceChanged     = "notify_service_state_changed"
+	MethodPowerChanged       = "notify_power_changed"
 )
 
 // ParseStatusUpdate decodes notify_status_update params:

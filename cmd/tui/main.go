@@ -281,7 +281,8 @@ type model struct {
 		cursor int
 	}
 
-	jobs     jobsScreen // Phase 21: history and job queue
+	jobs     jobsScreen    // Phase 21: history and job queue
+	machine  machineScreen // Phase 22: host, MCUs, services, power
 	extLen   float64
 	extSpeed float64
 
@@ -669,6 +670,9 @@ func (m model) initialize() tea.Cmd {
 			if isLevelingObject(name) {
 				subMap[name] = []string{"applied"}
 			}
+			if isMCUObject(name) {
+				subMap[name] = []string{"mcu_version", "mcu_constants", "last_stats"}
+			}
 			if name == "exclude_object" {
 				subMap[name] = []string{"objects", "excluded_objects", "current_object"}
 			}
@@ -739,7 +743,7 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name), name == "exclude_object":
+		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name), name == "exclude_object", isMCUObject(name):
 			// Generic: store every reported field as-is.
 			raw.merge(name, fields)
 		case name == "webhooks":
@@ -966,6 +970,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm, cmd := m.progress.Update(msg)
 		m.progress = pm.(progress.Model)
 		return m, cmd
+
+	case machineLoadedMsg:
+		m.onMachineLoaded(msg)
+		return m, nil
+
+	case machineActionMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! %s: %v", msg.what, msg.err))
+			return m, nil
+		}
+		m.appendLog("** " + msg.what)
+		if m.machine.open {
+			return m, loadMachineCmd(m.client)
+		}
+		return m, nil
 
 	case jobsLoadedMsg:
 		m.onJobsLoaded(msg)
@@ -1522,6 +1541,9 @@ func (m model) View() string {
 	}
 	if m.jobs.open {
 		return m.renderJobs()
+	}
+	if m.machine.open {
+		return m.renderMachine()
 	}
 	if m.prompt.Shown != nil && m.confirmation == nil {
 		return m.renderMacroPrompt()
