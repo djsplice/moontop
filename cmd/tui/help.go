@@ -27,6 +27,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.jobs.open = false
 		m.machine.open = false
 		m.updates.open = false
+		m.mesh.open = false
 		return m, m.armEmergencyStop()
 	}
 
@@ -97,6 +98,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// A macro prompt, then the exclude-object list, own the keyboard
 	// (E-stop and confirmations are handled above).
+	// Klipper waiting on a paper test comes first: it's blocking.
+	if m.manualProbeActive() {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleProbeKey(msg)
+	}
 	if m.prompt.Shown != nil {
 		if msg.String() == "ctrl+c" {
 			return m.quit()
@@ -134,6 +142,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.quit()
 		}
 		return m, m.handleLineEditKey(msg)
+	}
+	if m.mesh.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleMeshKey(msg)
 	}
 
 	// Typing a toolhead position or step, or a Tuning / Extruder
@@ -178,6 +192,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openJobs()
 		case key.Matches(msg, *keys.Machine):
 			return m, m.openMachine()
+		case key.Matches(msg, *keys.BedMesh):
+			if ok, why := hasBedMesh(&m); !ok {
+				m.appendLog("!! bed mesh: only " + why)
+				return m, nil
+			}
+			m.mesh.open = true
+			return m, nil
 		case key.Matches(msg, *keys.Updates):
 			m.updates.open = true
 			return m, loadUpdatesCmd(m.client)

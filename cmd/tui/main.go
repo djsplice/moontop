@@ -286,11 +286,13 @@ type model struct {
 	tempHist map[string]*spark.Ring
 	historyW int
 
-	jobs     jobsScreen    // Phase 21: history and job queue
-	machine  machineScreen // Phase 22: host, MCUs, services, power
-	updates  updatesScreen // Phase 23: updates and announcements
-	extLen   float64
-	extSpeed float64
+	jobs      jobsScreen    // Phase 21: history and job queue
+	machine   machineScreen // Phase 22: host, MCUs, services, power
+	updates   updatesScreen // Phase 23: updates and announcements
+	mesh      meshScreen    // Phase 24: bed mesh, screws tilt
+	probeStep int           // manual probe step (index into probeSteps)
+	extLen    float64
+	extSpeed  float64
 
 	// Console log lines; viewport content is rebuilt from this on append.
 	logLines []string
@@ -477,6 +479,7 @@ func initialModel(client *moonraker.Client) model {
 		tuneFields: newFieldList(),
 		extFields:  newFieldList(),
 		outFields:  newFieldList(),
+		probeStep:  3, // 0.05 mm
 		browser:    macroBrowser{filter: newMacroFilter()},
 		extLen:     10,
 		extSpeed:   5,
@@ -680,6 +683,14 @@ func (m model) initialize() tea.Cmd {
 			if isMCUObject(name) {
 				subMap[name] = []string{"mcu_version", "mcu_constants", "last_stats"}
 			}
+			switch name {
+			case "bed_mesh":
+				subMap[name] = []string{"profile_name", "mesh_min", "mesh_max", "probed_matrix", "profiles"}
+			case "screws_tilt_adjust":
+				subMap[name] = []string{"error", "results"}
+			case "manual_probe":
+				subMap[name] = []string{"is_active", "z_position", "z_position_lower", "z_position_upper"}
+			}
 			if name == "exclude_object" {
 				subMap[name] = []string{"objects", "excluded_objects", "current_object"}
 			}
@@ -750,7 +761,8 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name), name == "exclude_object", isMCUObject(name):
+		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name), name == "exclude_object", isMCUObject(name),
+			name == "bed_mesh", name == "screws_tilt_adjust", name == "manual_probe":
 			// Generic: store every reported field as-is.
 			raw.merge(name, fields)
 		case name == "webhooks":
@@ -1584,6 +1596,12 @@ func (m model) View() string {
 	}
 	if m.updates.open {
 		return m.renderUpdates()
+	}
+	if m.manualProbeActive() && m.confirmation == nil {
+		return m.renderProbe()
+	}
+	if m.mesh.open {
+		return m.renderMesh()
 	}
 	if m.prompt.Shown != nil && m.confirmation == nil {
 		return m.renderMacroPrompt()

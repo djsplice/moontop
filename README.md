@@ -70,6 +70,17 @@ edges. Single-printer, single-host, no auth, no persistence.
   output streamed in as it runs; refused while printing) and Moonraker's
   announcements (`d` dismisses). The dashboard title shows a badge when
   updates or announcements are waiting.
+- **Bed mesh** — `B` (or `F11`): the mesh as a grid of numbers, the
+  way Marlin prints `G29` (back of the bed on top, column and row
+  numbers, the range and probed area above), the saved profiles
+  (`Enter` loads, `s` saves under a name, `x` removes, `w` runs
+  `SAVE_CONFIG` to keep them), `c` calibrates (homed, not mid-print), `C`
+  clears; with `[screws_tilt_adjust]`, `t` runs `SCREWS_TILT_CALCULATE`
+  and shows each screw's turn.
+- **Manual probe** — whenever Klipper waits on a paper test
+  (`PROBE_CALIBRATE`, `Z_ENDSTOP_CALIBRATE`, `MANUAL_PROBE`…), a dialog
+  takes the screen: `↑↓` move Z by the step (`TESTZ`), `←→` change the
+  step, `Enter` accepts, `Esc` aborts.
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of
