@@ -75,7 +75,9 @@ homebrew_casks:
     directory: Casks
     homepage: https://github.com/justinh-rahb/moontop
     description: A terminal UI for Klipper printers, talking to Moonraker.
-    skip_upload: auto
+    # Published only when the tap token is set (see docs/RELEASING.md),
+    # and never for pre-releases.
+    skip_upload: '{{ if eq (envOrDefault "HOMEBREW_TAP_TOKEN" "") "" }}true{{ else }}auto{{ end }}'
     repository:
       owner: justinh-rahb
       name: homebrew-tap
@@ -98,7 +100,7 @@ scoops:
     homepage: https://github.com/justinh-rahb/moontop
     description: A terminal UI for Klipper printers, talking to Moonraker.
     license: MIT
-    skip_upload: auto
+    skip_upload: '{{ if eq (envOrDefault "SCOOP_BUCKET_TOKEN" "") "" }}true{{ else }}auto{{ end }}'
     repository:
       owner: justinh-rahb
       name: scoop-bucket
@@ -116,4 +118,4 @@ release:
   prerelease: auto
   footer: |
     ---
-    **Install:** `brew install --cask justinh-rahb/tap/moontop` · `scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket && scoop install moontop` · `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh`
+    **Install:** `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh` on Linux, macOS and FreeBSD, a `.deb` / `.rpm` / `.apk` / Arch package below, or `go install github.com/justinh-rahb/moontop/cmd/moontop@latest`. All the ways to install are in the [README](https://github.com/justinh-rahb/moontop#install).

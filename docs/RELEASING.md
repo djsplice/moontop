@@ -29,7 +29,9 @@ Releases are driven by `CHANGELOG.md`. Nothing is tagged by hand.
    e.g. to retry after fixing a secret.
 
 A version with a suffix (`0.2.0-rc.1`) is published as a pre-release, and
-GoReleaser leaves the Homebrew tap and Scoop bucket alone for it.
+GoReleaser leaves the Homebrew tap and Scoop bucket alone for it. Without the
+`HOMEBREW_TAP_TOKEN` / `SCOOP_BUCKET_TOKEN` secrets the release still goes
+out; only the cask and the Scoop manifest are skipped.
 
 ## What a release publishes
 
