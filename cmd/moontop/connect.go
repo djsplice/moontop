@@ -694,7 +694,7 @@ func connectClient(host string, inline, useDefault bool) (*moonraker.Client, str
 			return c, host, nil
 		}
 		unauthorized := errors.Is(err, moonraker.ErrUnauthorized)
-		if !isTerminal(os.Stdin) || !unauthorized && !viaDefault {
+		if !interactive() || !unauthorized && !viaDefault {
 			return nil, host, err
 		}
 		if !unauthorized {
@@ -720,6 +720,11 @@ func connectClient(host string, inline, useDefault bool) (*moonraker.Client, str
 	}
 	return finishConnect(tea.NewProgram(m, opts...).Run())
 }
+
+// interactive reports whether the connection screen can be shown. A
+// variable so tests don't depend on how the CI runner wires stdin (on
+// Windows it's a console, so the screen would open and wait).
+var interactive = func() bool { return isTerminal(os.Stdin) }
 
 func finishConnect(final tea.Model, err error) (*moonraker.Client, string, error) {
 	if err != nil {

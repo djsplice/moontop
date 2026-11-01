@@ -349,6 +349,8 @@ func TestConnectClientUsesDefault(t *testing.T) {
 	}
 	c.Close()
 	// Unreachable default without a terminal: an error, not a hang.
+	interactive = func() bool { return false }
+	t.Cleanup(func() { interactive = func() bool { return isTerminal(os.Stdin) } })
 	srv.Close()
 	if _, _, err := connectClient("", false, true); err == nil {
 		t.Fatal("unreachable default should fail without a terminal")
