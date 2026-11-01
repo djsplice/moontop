@@ -92,6 +92,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 | 💡 **Outputs** | Fans, output pins and LEDs, discovered from your config |
 | 📜 **Macros** | Every macro with its parameters; pin your favourites; parameter forms; macro prompts |
 | 🖨️ **Printing** | Files and a file manager with slicer details and upload, pause / resume / cancel, progress and ETA, exclude object, history, job queue |
+| 📷 **Camera** | Pane 5 swaps to the printer webcam. Ghostty, Kitty, and WezTerm draw it sharp; any terminal can draw it with block characters |
 | 🗺️ **Bed** | The mesh as a coloured grid of numbers, profiles, calibrate, screws tilt, manual probe |
 | 🛠️ **Machine** | Host and MCU stats, services, power devices, updates, announcements, logs, config editing in `$EDITOR` |
 | 🔐 **Connecting** | A connection manager with your recent printers; Moonraker logins and API keys |
@@ -300,6 +301,7 @@ Type gcode and press `Enter`. Klipper errors are red, echoes muted, and Moontop'
 - While you type a macro, the pane title shows the parameters you haven't given yet, with their defaults.
 - `↑` `↓` history. `Ctrl+O` shows the lines filters hide (heat-wait temperatures and TMC current reports, by default).
 - `F5` / `F6` restart Klipper from here, where `K` and `F` are just letters.
+- `Ctrl+T` swaps this pane with the printer's webcam. The console log, and anything you had typed, stay put. `b` cycles the picture while the camera is showing: sharp 960, sharp 640, sharp 480, quadrant blocks, half blocks. The title shows `640`, `480`, `quad`, or `half`. Sharp pictures need `ffmpeg` on `PATH`. Ghostty, Kitty, and WezTerm draw the frame; other terminals draw quadrant blocks. Inside tmux, the sharp picture also needs `set -g allow-passthrough on`. [How the picture is drawn](docs/CAMERA.md).
 
 ### 6 · AFC
 
@@ -537,6 +539,7 @@ Press **`?`** in the dashboard for the complete, always-current list — it's ge
 | `?` `F1` · `F2` `,` | Help · setup |
 | `F3` `g` · `J` `F7` · `M` `F8` · `U` `F9` · `B` `F11` · `L` `F12` · `E` | Macros · jobs and files · machine · software · bed mesh · logs · config |
 | `Ctrl+O` | Show / hide filtered console lines |
+| `Ctrl+T` · `b` | Swap pane 5 between the console and the webcam, and cycle picture quality |
 | `q` `F10` `Ctrl+C` | Quit |
 
 | Print and Klipper | |
@@ -628,7 +631,7 @@ Moontop works with stock Klipper and Moonraker, and discovers what each printer 
 | **Vendor macros** | Everything a vendor adds shows up in the macro browser with its parameters. |
 | **Optional Moonraker components** | History, job queue, power devices, update manager and announcements appear only when enabled, and the screen says which section to add when one isn't. Older Moonraker update endpoints are used when the new one isn't there. |
 
-Not yet: webcams, thumbnails.
+Not yet: thumbnails.
 
 ---
 
@@ -662,16 +665,18 @@ cmd/moontop/             the moontop binary
   prompts.go             macro prompts, exclude object
   jobs.go machine.go updates.go bedmesh.go logs.go   the full-screen tools
   setup.go settings.go   setup screen, applying and saving settings
+  video.go               pane 5 webcam
   repl.go cli.go         moontop console, gcode, dump
 internal/
   moonraker/             JSON-RPC websocket client, typed API, HTTP files
+  webcam/                H.264 frames, block pictures, Kitty graphics
   config/                config.toml and per-printer settings
   console/               line classification, filters, history (all modes)
   afc/                   AFC model and commands
   macros/                macro parameters from templates
   prompt/                action:prompt_* parser
   spark/                 braille sparklines
-docs/                    ROADMAP.md, UI-PLAN.md, RELEASING.md; the website (index.html, shots/)
+docs/                    CAMERA.md, ROADMAP.md, UI-PLAN.md, RELEASING.md; the website (index.html, shots/)
 testdata/                printer status fixtures (a U1's AFC-Lite)
 ```
 

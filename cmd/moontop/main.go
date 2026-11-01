@@ -12,12 +12,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
 	"log"
 	"os"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -256,8 +258,33 @@ type model struct {
 	table    table.Model
 	viewport viewport.Model
 	input    textinput.Model
-	files    list.Model
-	progress progress.Model
+
+	// showVideo swaps the console pane for the webcam. camGen drops
+	// frames from an ffmpeg this pane has replaced. camStop kills that
+	// process. camPaint is the last frame already turned into terminal
+	// text; building a Kitty frame is too much work to repeat on every redraw.
+	showVideo     bool
+	camName       string
+	camURL        string
+	camStream     string
+	camImg        image.Image
+	camPNG        []byte
+	camPaint      string
+	camPaintCols  int
+	camPaintRows  int
+	camErr        string
+	camNote       string
+	camGen        int
+	camLive       bool
+	camWantStream bool
+	camSharp      bool
+	camDetail     int // 0 sharp 960 or quadrants, 1 sharp 640, 2 sharp 480, 3 quadrants, 4 half blocks
+	camEncode     *atomic.Bool
+	camPlaced     bool
+	camStop       func()
+	camFrames     <-chan camFrameMsg
+	files         list.Model
+	progress      progress.Model
 
 	// Tuning and Extruder field lists (see fields.go); extrude length
 	// and speed are this session's choice, not printer state.
@@ -1145,6 +1172,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.nextRetryIn = backoffDelay(next)
 		return m, m.attemptReconnect(next, m.nextRetryIn)
 
+	case camReadyMsg:
+		return m, m.onCamReady(msg)
+
+	case camFrameMsg:
+		return m, m.onCamFrame(msg)
+
+	case camPollMsg:
+		return m, m.onCamPoll(msg)
+
+	case camStreamEndMsg:
+		return m, m.onCamEnd(msg)
+
 	case errMsg:
 		m.err = msg.err
 		return m, nil
@@ -1199,7 +1238,7 @@ func (m *model) cycleFocus(delta int) {
 // Confirmations survive focus changes intentionally.
 func (m *model) setFocus(f focusArea) {
 	m.focus = f
-	if f == focusConsole {
+	if f == focusConsole && !m.showVideo {
 		m.input.Focus()
 	} else {
 		m.input.Blur()
@@ -1460,6 +1499,9 @@ func (m *model) resizeLayout() {
 	m.input.Width = m.layout.inputW
 
 	m.files.SetSize(m.layout.filesContentW, m.layout.filesContentH)
+	if m.showVideo {
+		m.paintCamera()
+	}
 }
 
 // setTableColumns sizes the Temperatures columns to the pane. The State
@@ -1607,7 +1649,13 @@ func friendlyName(name string) string {
 // ---------------------------------------------------------------------------
 
 // View is the dashboard, in the theme's text colour.
-func (m model) View() string { return tintView(m.view()) }
+func (m model) View() string {
+	s := tintView(m.view())
+	if pre := m.cameraDeletePrefix(); pre != "" {
+		return pre + s
+	}
+	return s
+}
 
 func (m model) view() string {
 	if m.err != nil {
@@ -1669,7 +1717,12 @@ func (m model) view() string {
 		focusJog:      m.renderJog,
 		focusFiles:    m.renderFiles,
 		focusTuning:   m.renderTuning,
-		focusConsole:  func() string { return m.viewport.View() + "\n" + m.renderConsoleInput() },
+		focusConsole: func() string {
+			if m.showVideo {
+				return m.renderCamera()
+			}
+			return m.viewport.View() + "\n" + m.renderConsoleInput()
+		},
 	}
 	pane := func(f focusArea) string {
 		return renderPanel(m.paneTitle(f), bodies[f](), m.focus == f, m.layout.w(f), m.layout.h(f))
@@ -1774,7 +1827,7 @@ func (m model) fitFooter(barView string) string {
 		return strings.Join(items, "  •  ")
 	}
 	for {
-		f := renderFooter(paneName(m.focus), join(paneKeys), join(jobKeys), job, barView, m.renderConnView(), compact)
+		f := renderFooter(m.focusLabel(), join(paneKeys), join(jobKeys), job, barView, m.renderConnView(), compact)
 		over := lipgloss.Width(f) - m.width
 		if m.width <= 0 || over <= 0 {
 			return f
@@ -1836,8 +1889,38 @@ func paneName(f focusArea) string {
 	return "?"
 }
 
+// focusLabel is the footer name of the focused pane. The camera
+// reuses the console's slot, so the footer follows which one is showing.
+func (m model) focusLabel() string {
+	if m.showVideo && m.focus == focusConsole {
+		if m.camName != "" {
+			return m.camName
+		}
+		return "Camera"
+	}
+	return paneName(m.focus)
+}
+
 func (m model) paneTitle(f focusArea) string {
-	t := fmt.Sprintf("%d %s", paneNumber(f), paneName(f))
+	name := paneName(f)
+	if f == focusConsole && m.showVideo {
+		if m.camName != "" {
+			name = m.camName
+		} else {
+			name = "Camera"
+		}
+	}
+	t := fmt.Sprintf("%d %s", paneNumber(f), name)
+	if f == focusConsole && m.showVideo {
+		hint := "ctrl+t console"
+		if d := m.detailLabel(); d != "" {
+			hint = d + " · " + hint
+		}
+		if m.camNote != "" {
+			hint = m.camNote + " · " + hint
+		}
+		return t + " · " + hint
+	}
 	if f == focusConsole {
 		// The macro being typed: its parameters not typed yet.
 		if hint := m.consoleHint(); hint != "" && m.focus == focusConsole {

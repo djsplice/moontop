@@ -11,6 +11,15 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
 
 ### Added
 
+- Camera: `Ctrl+T` swaps pane 5 between the gcode console and the printer's
+  webcam. The pane plays that camera's H.264 stream through ffmpeg (the
+  WebRTC camera, when Moonraker has one). Ghostty, Kitty, and WezTerm draw
+  the frames sharp; other terminals, and tmux without `allow-passthrough on`,
+  draw quadrant blocks (four pixels per cell). `b` on the camera cycles
+  sharp 960, sharp 640, sharp 480, quadrant blocks, and half blocks. The
+  640 and 480 rungs decode a smaller picture, and the block rungs stay on
+  the 480 decode. If the stream is unavailable, the pane falls back to the
+  JPEG snapshot. See [docs/CAMERA.md](docs/CAMERA.md).
 - Connection manager: `moontop` (and `moontop console`) without a host opens
   a screen to type an address or pick a recent printer, the last used one
   preselected. Hosts are normalised (`voron.local` → `voron.local:7125`,
