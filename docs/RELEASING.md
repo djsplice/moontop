@@ -35,7 +35,7 @@ A version with a suffix (`0.2.0-rc.1`) is published as a pre-release.
 | Channel | What | Where |
 | --- | --- | --- |
 | GitHub release | `tar.gz` (Linux, macOS, FreeBSD) and `zip` (Windows) for amd64 / arm64 (and armv7 on Linux), `checksums.txt` | Releases page |
-| install.sh | downloads the right archive and checks its checksum | `main` branch |
+| install.sh | downloads the right archive and checks its checksum | the website: `justinh-rahb.github.io/moontop/install.sh` (a copy of the top-level file, published from `docs/`) |
 | `go install` | builds from source at the tag | `github.com/justinh-rahb/moontop/cmd/moontop@latest` |
 
 Binaries are built with `CGO_ENABLED=0 -trimpath` and stamped with

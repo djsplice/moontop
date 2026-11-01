@@ -61,4 +61,4 @@ release:
   prerelease: auto
   footer: |
     ---
-    **Install:** `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh` (Linux, macOS, FreeBSD) or `go install github.com/justinh-rahb/moontop/cmd/moontop@latest`. On Windows, unzip `moontop_*_windows_*.zip` below. More in the [README](https://github.com/justinh-rahb/moontop#install).
+    **Install:** `curl -fsSL https://justinh-rahb.github.io/moontop/install.sh | sh` (Linux, macOS, FreeBSD) or `go install github.com/justinh-rahb/moontop/cmd/moontop@latest`. On Windows, unzip `moontop_*_windows_*.zip` below. More in the [README](https://github.com/justinh-rahb/moontop#install).

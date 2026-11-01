@@ -129,5 +129,8 @@ These have held since the first phase; keep them.
 - AFC lanes come only from `AFC.lanes`; drive or selector steppers are not lanes.
 - `server.temperature_store` and `server.history.*` may be missing on minimal
   Moonraker installs.
+- `install.sh` is served from the website as `docs/install.sh`
+  (justinh-rahb.github.io/moontop/install.sh). Edit the top-level one and copy
+  it over; CI fails if they differ.
 - The README screenshot is a real 150-column render; regenerate it rather
   than editing it by hand when the layout changes.

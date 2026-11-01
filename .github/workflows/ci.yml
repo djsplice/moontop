@@ -93,3 +93,5 @@ jobs:
       - uses: actions/checkout@v7
       - run: sh -n install.sh
       - run: shellcheck install.sh
+      - name: The website's copy matches
+        run: cmp install.sh docs/install.sh || { echo "::error::docs/install.sh differs from install.sh; copy it over"; exit 1; }

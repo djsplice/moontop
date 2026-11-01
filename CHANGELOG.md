@@ -9,6 +9,20 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
 
 ## [Unreleased]
 
+### Added
+
+- `P` in the dashboard goes back to the connection screen to switch printers,
+  without quitting.
+- A default printer: `ctrl+s` on the connection screen makes the selected one
+  connect at start (the screen still opens if it can't be reached).
+
+### Changed
+
+- The installer has a shorter address on the website:
+  `curl -fsSL https://justinh-rahb.github.io/moontop/install.sh | sh`.
+- `phosphor` and `amber` draw unfocused pane borders brighter, so they hold up
+  in CRT emulators such as Cool Retro Term.
+
 ## [0.1.0] - 2026-11-01
 
 The first release: a keyboard-driven terminal UI for Klipper printers,

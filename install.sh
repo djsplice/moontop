@@ -2,7 +2,10 @@
 # Moontop installer: downloads a release binary, verifies its checksum and
 # installs it.
 #
-#   curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh
+#   curl -fsSL https://justinh-rahb.github.io/moontop/install.sh | sh
+#
+# docs/install.sh is a copy served by the website; keep them identical
+# (CI checks).
 #
 # Environment:
 #   MOONTOP_VERSION      version to install, e.g. 0.1.0 (default: latest release)
