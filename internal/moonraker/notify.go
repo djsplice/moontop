@@ -23,6 +23,7 @@ const (
 	MethodUpdateRefreshed    = "notify_update_refreshed"
 	MethodAnnouncementUpdate = "notify_announcement_update"
 	MethodAnnouncementGone   = "notify_announcement_dismissed"
+	MethodFileListChanged    = "notify_filelist_changed"
 )
 
 // ParseStatusUpdate decodes notify_status_update params:

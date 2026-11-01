@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -487,6 +488,7 @@ func initialModel(client *moonraker.Client) model {
 		outFields:  newFieldList(),
 		probeStep:  3, // 0.05 mm
 		browser:    macroBrowser{filter: newMacroFilter()},
+		jobs:       jobsScreen{tab: jobsHistory}, // J opens on History; f in Files opens the Files tab
 		extLen:     10,
 		extSpeed:   5,
 		focus:      focusFiles,
@@ -1083,6 +1085,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case dirLoadedMsg:
+		m.onDirLoaded(msg)
+		return m, nil
+
+	case fileOpMsg:
+		return m, m.onFileOp(msg)
+
 	case filesLoadedMsg:
 		if msg.err != nil {
 			m.appendLog(fmt.Sprintf("!! load files: %v", msg.err))
@@ -1215,6 +1224,16 @@ func (m *model) handleFilesKey(msg tea.KeyMsg) tea.Cmd {
 			return m.queueFile(it.info.Path)
 		}
 		return nil
+	}
+	if key.Matches(msg, *keys.FilesManage) && m.files.FilterState() != list.Filtering {
+		dir, name := "", ""
+		if it, ok := m.files.SelectedItem().(fileItem); ok {
+			dir, name = path.Dir(it.info.Path), path.Base(it.info.Path)
+			if dir == "." {
+				dir = ""
+			}
+		}
+		return m.openFileManager(dir, name)
 	}
 	if msg.String() == "enter" {
 		if it, ok := m.files.SelectedItem().(fileItem); ok {

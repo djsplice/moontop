@@ -22,14 +22,17 @@ import (
 // ---------------------------------------------------------------------------
 
 const (
-	jobsHistory = iota
+	jobsFiles = iota
+	jobsHistory
 	jobsQueue
+	jobsTabs
 )
 
 type jobsScreen struct {
 	open     bool
 	tab      int
-	cursor   [2]int
+	cursor   [jobsTabs]int
+	files    fileManager
 	history  []moonraker.HistoryJob
 	totals   *moonraker.HistoryTotals
 	queue    moonraker.JobQueue
@@ -83,6 +86,9 @@ func componentError(err error, section string) string {
 
 func (m *model) openJobs() tea.Cmd {
 	m.jobs.open = true
+	if m.jobs.tab == jobsFiles {
+		return tea.Batch(loadJobsCmd(m.client), loadDirCmd(m.client, m.jobs.files.dir))
+	}
 	return loadJobsCmd(m.client)
 }
 
@@ -91,9 +97,8 @@ func (m *model) onJobsLoaded(msg jobsLoadedMsg) {
 	m.jobs.history, m.jobs.totals, m.jobs.queue = msg.history, msg.totals, msg.queue
 	m.jobs.histErr = componentError(msg.histErr, "history")
 	m.jobs.queueErr = componentError(msg.queueErr, "job_queue")
-	for i, n := range []int{len(m.jobs.history), len(m.jobs.queue.Jobs)} {
-		m.jobs.cursor[i] = min(m.jobs.cursor[i], max(0, n-1))
-	}
+	m.jobs.cursor[jobsHistory] = min(m.jobs.cursor[jobsHistory], max(0, len(m.jobs.history)-1))
+	m.jobs.cursor[jobsQueue] = min(m.jobs.cursor[jobsQueue], max(0, len(m.jobs.queue.Jobs)-1))
 }
 
 // onJobsChanged handles the two notifications: reload when on screen.
@@ -113,6 +118,11 @@ func (m *model) queueFile(name string) tea.Cmd {
 
 func (m *model) handleJobsKey(msg tea.KeyMsg) tea.Cmd {
 	j := &m.jobs
+	if j.tab == jobsFiles {
+		if cmd, done := m.handleFileMgrKey(msg); done {
+			return cmd
+		}
+	}
 	n := len(j.history)
 	if j.tab == jobsQueue {
 		n = len(j.queue.Jobs)
@@ -122,9 +132,12 @@ func (m *model) handleJobsKey(msg tea.KeyMsg) tea.Cmd {
 	case "esc", "q":
 		j.open = false
 		return nil
-	case "tab", "shift+tab", "left", "right", "h", "l":
-		j.tab = 1 - j.tab
-		return nil
+	case "tab", "right", "l":
+		j.tab = (j.tab + 1) % jobsTabs
+		return m.jobsTabCmd()
+	case "shift+tab", "left", "h":
+		j.tab = (j.tab + jobsTabs - 1) % jobsTabs
+		return m.jobsTabCmd()
 	case "up", "k":
 		if n > 0 {
 			j.cursor[j.tab] = (j.cursor[j.tab] + n - 1) % n
@@ -142,7 +155,7 @@ func (m *model) handleJobsKey(msg tea.KeyMsg) tea.Cmd {
 		j.open = false
 		return nil
 	}
-	if n == 0 {
+	if n == 0 || j.tab == jobsFiles {
 		return nil
 	}
 	i := min(j.cursor[j.tab], n-1)
@@ -184,6 +197,14 @@ func (m *model) handleJobsKey(msg tea.KeyMsg) tea.Cmd {
 			prompt: "Delete the history record for " + h.Filename + "? (The file stays.)",
 			onYes:  jobsAction("delete history record", func() error { return c.HistoryDelete(h.JobID) }),
 		}
+	}
+	return nil
+}
+
+// jobsTabCmd loads the Files tab's folder when it's switched to.
+func (m *model) jobsTabCmd() tea.Cmd {
+	if m.jobs.tab == jobsFiles {
+		return loadDirCmd(m.client, m.jobs.files.dir)
 	}
 	return nil
 }
@@ -230,7 +251,7 @@ func formatFilament(mm float64) string {
 
 func (m model) renderJobs() string {
 	j := m.jobs
-	tabs := []string{"History", fmt.Sprintf("Queue (%d)", len(j.queue.Jobs))}
+	tabs := []string{"Files", "History", fmt.Sprintf("Queue (%d)", len(j.queue.Jobs))}
 	for i, t := range tabs {
 		if i == j.tab {
 			tabs[i] = jogStepStyle.Underline(true).Render(t)
@@ -253,6 +274,8 @@ func (m model) renderJobs() string {
 	}
 
 	switch {
+	case j.tab == jobsFiles:
+		lines, foot = m.renderFileMgr(w, rowsFit-2)
 	case !j.loaded:
 		lines = append(lines, consoleInfoStyle.Render("Loading…"))
 	case j.tab == jobsHistory && j.histErr != "":
@@ -313,9 +336,15 @@ func (m model) renderJobs() string {
 	if m.confirmation != nil {
 		out += renderPrompt(m.confirmation, m.width) + "\n"
 	}
-	keysLine := "tab history / queue  •  r refresh  •  esc close"
-	if foot != "" {
+	keysLine := "tab files / history / queue  •  r refresh  •  esc close"
+	switch {
+	case j.tab == jobsFiles && foot != "":
+		keysLine = foot // its own two lines
+	case foot != "":
 		keysLine = foot + "  •  " + keysLine
 	}
-	return out + clipWidth(footerStyle.Render(keysLine), m.width) + "\n"
+	for _, l := range strings.Split(keysLine, "\n") {
+		out += clipWidth(footerStyle.Render(l), m.width) + "\n"
+	}
+	return out
 }

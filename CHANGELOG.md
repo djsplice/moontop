@@ -19,6 +19,12 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
   (also `$MOONRAKER_API_KEY`). Refresh tokens and keys are remembered per
   printer in an owner-only `hosts.json`; passwords never are. Expired access
   tokens are refreshed for the websocket and file transfers.
+- File manager: a Files tab in the Jobs screen (`f` in the Files pane opens it
+  at the selected file) with folders, slicer metadata columns, a details
+  column, and print, queue, rename, copy, move, delete, new folder and upload
+  from this computer.
+- The Files pane and the file manager follow `notify_filelist_changed`, so
+  uploads and changes from elsewhere appear at once.
 - Colour schemes in setup → Display: `phosphor` (all green), `amber`,
   `terminal` (your terminal's palette), `mono`, `solarized`, `gruvbox`,
   `nord`, `dracula`, `catppuccin`, `tokyo-night` and `light`.

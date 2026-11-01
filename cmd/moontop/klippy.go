@@ -51,6 +51,7 @@ var notificationHandlers = map[string]notificationHandler{
 	moonraker.MethodKlippyDisconnected: (*model).onKlippyDisconnected,
 	moonraker.MethodHistoryChanged:     (*model).onJobsChanged,
 	moonraker.MethodJobQueueChanged:    (*model).onJobsChanged,
+	moonraker.MethodFileListChanged:    (*model).onFileListChanged,
 	moonraker.MethodProcStatUpdate:     (*model).onProcStats,
 	moonraker.MethodServiceChanged:     (*model).onServiceChanged,
 	moonraker.MethodPowerChanged:       (*model).onPowerChanged,

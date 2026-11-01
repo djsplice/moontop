@@ -91,9 +91,11 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 | 🧵 **Filament** | Extrude / retract, load / unload (whatever your printer calls it), tool changes, AFC lanes |
 | 💡 **Outputs** | Fans, output pins and LEDs, discovered from your config |
 | 📜 **Macros** | Every macro with its parameters; pin your favourites; parameter forms; macro prompts |
-| 🖨️ **Printing** | Files, pause / resume / cancel, progress and ETA, exclude object, history, job queue |
+| 🖨️ **Printing** | Files and a file manager with slicer details and upload, pause / resume / cancel, progress and ETA, exclude object, history, job queue |
 | 🗺️ **Bed** | The mesh as a coloured grid of numbers, profiles, calibrate, screws tilt, manual probe |
 | 🛠️ **Machine** | Host and MCU stats, services, power devices, updates, announcements, logs, config editing in `$EDITOR` |
+| 🔐 **Connecting** | A connection manager with your recent printers; Moonraker logins and API keys |
+| 🎨 **Looks** | Twelve colour schemes, from all-green phosphor to your terminal's own palette |
 | 🛡️ **Safety** | E-stop from anywhere, confirmations, refusals that explain themselves, never a value you didn't confirm |
 
 Moontop only ever shows what the printer reports. A target you set appears when Klipper confirms it, not before.
@@ -240,13 +242,14 @@ The footer always shows the focused pane's main keys, what's happening with the 
 
 ### 1 · Files
 
-Your gcode files, newest first (or by name). Type `/` to filter.
+Your gcode files, newest first (or by name). Type `/` to filter. The list follows changes on the printer as they happen — an upload from your slicer shows up at once.
 
 | Key | |
 | --- | --- |
 | `Enter` | Print the selected file (confirms) |
 | `a` | Add it to the job queue |
 | `/` | Filter |
+| `f` | The file manager, at the selected file: folders, details, rename, move, delete, upload |
 
 ### 2 · Toolhead
 
@@ -353,7 +356,7 @@ Each opens from anywhere and closes with `Esc`.
 | --- | --- | --- |
 | `F3` / `g` | **Macros** | Every macro: type to filter, `Enter` runs, `Space` pins to the dashboard |
 | `O` / `F4` | **Objects** | During a print with labelled objects: the one printing now, those excluded; `Enter` excludes one (confirms) |
-| `J` / `F7` | **Jobs** | Print history and totals, the job queue |
+| `J` / `F7` | **Jobs** | The file manager, print history and totals, the job queue |
 | `M` / `F8` | **Machine** | Host, MCUs, services, power devices |
 | `U` / `F9` | **Software** | Updates and announcements |
 | `B` / `F11` | **Bed mesh** | Mesh grid, profiles, calibrate, screws tilt |
@@ -383,24 +386,45 @@ sends  PRINT_START BED=65
 </details>
 
 <details>
-<summary><b>Jobs</b> — <code>J</code> / <code>F7</code></summary>
+<summary><b>Jobs</b> — <code>J</code> / <code>F7</code> — files, history and the queue</summary>
 
 <br>
 
+Three tabs; `tab` / `shift+tab` move between them. `J` opens on History, `f` in the Files pane opens the Files tab at the selected file.
+
 ```text
-◐ Moontop  ·  Jobs   History   Queue (1)
+◐ Moontop  ·  Jobs   Files   History   Queue (0)
 
-3 jobs · 1h17m printing · 3.4 m filament · longest print 1h12m
+gcodes  ·  2 folders, 5 files  ·  newest first  ·  21.4 GB free of 25.5 GB
 
-▸ ✓ benchy.gcode      2026-10-30 14:02   1h12m   3.4 m  completed
-  ✗ cube.gcode        2026-10-29 09:26      5m          cancelled
-  ! gone.gcode        2026-10-28 06:40       —          error
+  Name                                      Size          Modified  Estimate  Filament │ Small+Parts+Cylinder_PLA_30m37s.gcode
+  calibration/                                    2026-09-21 10:13                     │
+  voron-parts/                                    2026-09-21 10:13                     │ Size       1.8 MB
+  Finger+Treads(3)_PLA_26m22s.gcode       2.0 MB  2026-10-31 22:26       26m     3.5 m │ Estimate   30m
+▸ Small+Parts+Cylinder_PLA_30m37s.gcode   1.8 MB  2026-10-30 18:40       30m     6.4 m │ Filament   6.4 m · 19.1 g · PLA
+  extreme+bearing+fidget+spinner…gcode   15.2 MB  2026-10-27 07:20     1h49m    11.6 m │ Layers     0.20 mm (first 0.20)
+  taller_q2_riser_plate1of2_ASA.gcode    46.0 MB  2026-10-20 08:40     8h19m   108.3 m │ Slicer     OrcaSlicer 2.3.1
 ```
+
+**Files** is a file manager for the gcodes folder, with what Moonraker read from each file — print estimate, filament, layer height, slicer — as columns, and every detail for the selected file beside the list on a wide terminal (a summary line on a narrow one).
+
+| Key | |
+| --- | --- |
+| `Enter` / `→` | Open a folder, or print a file (confirms) |
+| `←` / `Backspace` | Up a folder |
+| `a` | Add the file to the job queue |
+| `x` | Delete the file, or the folder and everything in it (confirms) |
+| `R` | Rename |
+| `C` | Copy (as "name copy.gcode") |
+| `m` | Move to another folder |
+| `n` | New folder |
+| `u` | Upload a file from this computer (type its path) |
+| `s` | Sort: newest, name, largest |
 
 **History:** `Enter` prints a file again (confirms), `a` queues it, `x` deletes the record (the file stays).<br>
 **Queue:** `s` starts or pauses the queue, `x` removes an entry. From Files, `a` queues a file.
 
-Both are optional Moonraker components (`[history]`, `[job_queue]`); the screen tells you when one is off.
+History and the queue are optional Moonraker components (`[history]`, `[job_queue]`); the screen tells you when one is off.
 
 </details>
 
@@ -511,7 +535,7 @@ Press **`?`** in the dashboard for the complete, always-current list — it's ge
 | `Tab` / `Shift+Tab` · `1`–`9` | Next / previous pane · jump to a pane |
 | `Ctrl+X` | **Emergency stop** (confirms; works on every screen) |
 | `?` `F1` · `F2` `,` | Help · setup |
-| `F3` `g` · `J` `F7` · `M` `F8` · `U` `F9` · `B` `F11` · `L` `F12` · `E` | Macros · jobs · machine · software · bed mesh · logs · config |
+| `F3` `g` · `J` `F7` · `M` `F8` · `U` `F9` · `B` `F11` · `L` `F12` · `E` | Macros · jobs and files · machine · software · bed mesh · logs · config |
 | `Ctrl+O` | Show / hide filtered console lines |
 | `q` `F10` `Ctrl+C` | Quit |
 

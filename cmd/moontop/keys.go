@@ -109,7 +109,7 @@ var keys = struct {
 	Pause, Resume, Cancel, Exclude                                                                                      *key.Binding
 	Restart, FwRestart                                                                                                  *key.Binding
 	Confirm, Deny, HelpScroll                                                                                           *key.Binding
-	FilesMove, FilesFilter, FilesStart, FilesQueue                                                                      *key.Binding
+	FilesMove, FilesFilter, FilesStart, FilesQueue, FilesManage                                                         *key.Binding
 	JogX, JogY, JogZ, StepDown, StepUp                                                                                  *key.Binding
 	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                                                   *key.Binding
 	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                                             *key.Binding
@@ -132,7 +132,7 @@ var keys = struct {
 	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}, "1–9", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 	Macros:       bind([]string{"f3", "g"}, "F3/g", "macros: all of them, filter, run, pin"),
-	Jobs:         bind([]string{"f7", "J"}, "F7/J", "jobs: print history, totals, job queue"),
+	Jobs:         bind([]string{"f7", "J"}, "F7/J", "jobs: files, print history, totals, job queue"),
 	Machine:      bind([]string{"f8", "M"}, "F8/M", "machine: host, MCUs, services, power devices"),
 	Updates:      bind([]string{"f9", "U"}, "F9/U", "software updates and announcements"),
 	BedMesh:      bind([]string{"f11", "B"}, "F11/B", "bed mesh: grid, profiles, calibrate, screws tilt"),
@@ -157,6 +157,7 @@ var keys = struct {
 	FilesFilter: bind([]string{"/"}, "/", "filter files (esc clears)"),
 	FilesStart:  bind([]string{"enter"}, "enter", "print selected file (confirms)"),
 	FilesQueue:  bind([]string{"a"}, "a", "add the selected file to the job queue"),
+	FilesManage: bind([]string{"f"}, "f", "file manager: folders, details, rename, move, delete, upload"),
 
 	// Toolhead: WASD jogs XY, space jumps (Z up), c crouches (Z down);
 	// the arrows move the field cursor and change the step.
@@ -283,6 +284,7 @@ var registry = []keyEntry{
 	{b: keys.FilesFilter, scope: scopeFiles, short: "filter", footer: true, widget: true},
 	{b: keys.FilesStart, scope: scopeFiles, short: "print", footer: true},
 	{b: keys.FilesQueue, scope: scopeFiles, short: "queue", footer: true},
+	{b: keys.FilesManage, scope: scopeFiles, short: "manage", footer: true},
 
 	{b: keys.JogX, scope: scopeToolhead, short: "X", footer: true, when: canMove},
 	{b: keys.JogY, scope: scopeToolhead, short: "Y", footer: true, when: canMove},

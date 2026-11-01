@@ -461,7 +461,7 @@ func (m *connectModel) save() {
 func friendlyDialError(err error) string {
 	s := err.Error()
 	switch {
-	case strings.Contains(s, "connection refused"):
+	case strings.Contains(s, "connection refused"), strings.Contains(s, "actively refused"):
 		return "connection refused — is Moonraker running, and is that the right port? (usually 7125)"
 	case strings.Contains(s, "no such host"):
 		return "no such host"

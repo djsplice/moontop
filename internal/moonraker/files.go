@@ -125,3 +125,121 @@ func (c *Client) QueryEndstops() (map[string]string, error) {
 	err = json.Unmarshal(res, &out)
 	return out, err
 }
+
+// ---------------------------------------------------------------------------
+// File manager: directories, metadata, create / move / copy / delete.
+// Paths include the root ("gcodes/sub/part.gcode").
+// ---------------------------------------------------------------------------
+
+// FileMetadata is what Moonraker parsed from a gcode file's slicer
+// comments. Fields the slicer didn't write are zero.
+type FileMetadata struct {
+	Slicer              string   `json:"slicer"`
+	SlicerVersion       string   `json:"slicer_version"`
+	EstimatedTime       float64  `json:"estimated_time"`
+	LayerHeight         float64  `json:"layer_height"`
+	FirstLayerHeight    float64  `json:"first_layer_height"`
+	ObjectHeight        float64  `json:"object_height"`
+	NozzleDiameter      float64  `json:"nozzle_diameter"`
+	FilamentTotal       float64  `json:"filament_total"` // mm
+	FilamentWeightTotal float64  `json:"filament_weight_total"`
+	FilamentType        string   `json:"filament_type"`
+	FilamentName        string   `json:"filament_name"`
+	FirstLayerExtrTemp  float64  `json:"first_layer_extr_temp"`
+	FirstLayerBedTemp   float64  `json:"first_layer_bed_temp"`
+	PrintStartTime      *float64 `json:"print_start_time"`
+}
+
+// DirFile is a file in a directory listing, with its metadata when the
+// listing was extended and Moonraker has parsed it.
+type DirFile struct {
+	Name     string  `json:"filename"`
+	Modified float64 `json:"modified"`
+	Size     int64   `json:"size"`
+	FileMetadata
+}
+
+// DirEntry is a subdirectory in a listing.
+type DirEntry struct {
+	Name     string  `json:"dirname"`
+	Modified float64 `json:"modified"`
+	Size     int64   `json:"size"`
+}
+
+// DiskUsage is the root's filesystem, in bytes (floats: some
+// Moonraker versions send them that way).
+type DiskUsage struct {
+	Total float64 `json:"total"`
+	Used  float64 `json:"used"`
+	Free  float64 `json:"free"`
+}
+
+// Directory is one level of a root.
+type Directory struct {
+	Dirs  []DirEntry `json:"dirs"`
+	Files []DirFile  `json:"files"`
+	Disk  DiskUsage  `json:"disk_usage"`
+}
+
+// GetDirectory lists one directory, with gcode metadata.
+func (c *Client) GetDirectory(path string) (Directory, error) {
+	var d Directory
+	res, err := c.call("server.files.get_directory", map[string]any{"path": path, "extended": true})
+	if err != nil {
+		return d, err
+	}
+	err = json.Unmarshal(res, &d)
+	return d, err
+}
+
+// CreateDirectory makes a directory; its parent must exist.
+func (c *Client) CreateDirectory(path string) error {
+	_, err := c.call("server.files.post_directory", map[string]any{"path": path})
+	return err
+}
+
+// DeleteDirectory removes a directory; force removes its contents too.
+func (c *Client) DeleteDirectory(path string, force bool) error {
+	_, err := c.call("server.files.delete_directory", map[string]any{"path": path, "force": force})
+	return err
+}
+
+// DeleteFile removes a file.
+func (c *Client) DeleteFile(path string) error {
+	_, err := c.call("server.files.delete_file", map[string]any{"path": path})
+	return err
+}
+
+// MoveFile moves or renames a file or directory.
+func (c *Client) MoveFile(source, dest string) error {
+	_, err := c.call("server.files.move", map[string]any{"source": source, "dest": dest})
+	return err
+}
+
+// CopyFile copies a file or directory.
+func (c *Client) CopyFile(source, dest string) error {
+	_, err := c.call("server.files.copy", map[string]any{"source": source, "dest": dest})
+	return err
+}
+
+// FileListChange is one notify_filelist_changed.
+type FileListChange struct {
+	Action string `json:"action"` // create_file, delete_file, move_file, modify_file, create_dir, delete_dir, move_dir, root_update
+	Item   struct {
+		Root string `json:"root"`
+		Path string `json:"path"`
+	} `json:"item"`
+	SourceItem struct {
+		Root string `json:"root"`
+		Path string `json:"path"`
+	} `json:"source_item"`
+}
+
+// ParseFileListChange decodes notify_filelist_changed params.
+func ParseFileListChange(params []json.RawMessage) (FileListChange, bool) {
+	var ch FileListChange
+	if len(params) == 0 || json.Unmarshal(params[0], &ch) != nil {
+		return ch, false
+	}
+	return ch, true
+}
