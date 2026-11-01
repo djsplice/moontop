@@ -56,7 +56,7 @@ func (s keyScope) title() string {
 	case scopeToolhead:
 		return "Toolhead"
 	case scopeToolheadEdit:
-		return "Typing a value (Toolhead, Tuning, Extruder)"
+		return "Typing a value (Toolhead, Tuning, Extruder, Outputs)"
 	case scopeExtruder:
 		return "Extruder"
 	case scopeOutputs:
@@ -297,12 +297,13 @@ var registry = []keyEntry{
 	{b: keys.HomeY, scope: scopeToolhead, when: canMove},
 	{b: keys.HomeZ, scope: scopeToolhead, when: canMove},
 
-	{b: keys.ThType, scope: scopeToolheadEdit, short: "type", footer: true},
-	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "set", footer: true},
-	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 	{b: keys.MotorsOff, scope: scopeToolhead, when: whileIdle},
 	{b: keys.Level, scope: scopeToolhead, short: "level", footer: true, when: hasLeveling},
 	{b: keys.Endstops, scope: scopeToolhead},
+
+	{b: keys.ThType, scope: scopeToolheadEdit, short: "type", footer: true},
+	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "set", footer: true},
+	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 
 	{b: keys.FieldMove, scope: scopeTuning, short: "row", footer: true},
 	{b: keys.FieldAdjust, scope: scopeTuning, short: "adjust", footer: true},

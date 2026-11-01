@@ -1461,7 +1461,7 @@ func (m *model) resizeLayout() {
 func (m *model) setTableColumns() {
 	const minNameW = 12
 	widths := map[string]int{"state": 9, "current": 9, "target": 9, "power": 6, "history": historyMinW}
-	titles := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power", "history": "Last 5 min"}
+	titles := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power", "history": "History"}
 
 	// The configured columns, minus whatever doesn't fit — State first
 	// (it restates Target), then History, then Power.

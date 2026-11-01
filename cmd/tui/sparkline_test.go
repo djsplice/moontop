@@ -48,7 +48,7 @@ func TestTemperatureSparklines(t *testing.T) {
 	if len(m.tempHist["extruder"].Samples()) != before+1 {
 		t.Fatal("sample not recorded")
 	}
-	if !strings.Contains(m.View(), "Last 5 min") {
+	if !strings.Contains(m.View(), "History") {
 		t.Fatal("History column missing at 160 columns")
 	}
 }
