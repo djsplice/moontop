@@ -83,8 +83,6 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*.deb
-            dist/*.rpm
             dist/checksums.txt
           retention-days: 7
 

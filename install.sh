@@ -44,7 +44,7 @@ detect_platform() {
 	os=$(uname -s | tr '[:upper:]' '[:lower:]')
 	case "$os" in
 	linux | darwin | freebsd) ;;
-	*) die "unsupported OS '$os' — on Windows use Scoop or the .zip from the releases page" ;;
+	*) die "unsupported OS '$os' — on Windows use the .zip from the releases page" ;;
 	esac
 	arch=$(uname -m)
 	case "$arch" in

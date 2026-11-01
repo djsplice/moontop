@@ -39,15 +39,10 @@
 
       <div class="installer" data-tabs>
         <div class="tabbar" role="tablist" aria-label="Install with">
-          <button role="tab" aria-selected="true" aria-controls="i-brew" id="t-brew">brew</button>
-          <button role="tab" aria-selected="false" aria-controls="i-curl" id="t-curl" tabindex="-1">curl</button>
-          <button role="tab" aria-selected="false" aria-controls="i-scoop" id="t-scoop" tabindex="-1">scoop</button>
+          <button role="tab" aria-selected="true" aria-controls="i-curl" id="t-curl">curl</button>
           <button role="tab" aria-selected="false" aria-controls="i-go" id="t-go" tabindex="-1">go</button>
         </div>
-        <div class="tabpanel" role="tabpanel" id="i-brew" aria-labelledby="t-brew"><pre><code><span class="ps1">$</span> brew install --cask justinh-rahb/tap/moontop</code></pre><button class="copy" type="button">copy</button></div>
-        <div class="tabpanel" role="tabpanel" id="i-curl" aria-labelledby="t-curl" hidden><pre><code><span class="ps1">$</span> curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code></pre><button class="copy" type="button">copy</button></div>
-        <div class="tabpanel" role="tabpanel" id="i-scoop" aria-labelledby="t-scoop" hidden><pre><code><span class="ps1">&gt;</span> scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket
-<span class="ps1">&gt;</span> scoop install moontop</code></pre><button class="copy" type="button">copy</button></div>
+        <div class="tabpanel" role="tabpanel" id="i-curl" aria-labelledby="t-curl"><pre><code><span class="ps1">$</span> curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code></pre><button class="copy" type="button">copy</button></div>
         <div class="tabpanel" role="tabpanel" id="i-go" aria-labelledby="t-go" hidden><pre><code><span class="ps1">$</span> go install github.com/justinh-rahb/moontop/cmd/moontop@latest</code></pre><button class="copy" type="button">copy</button></div>
       </div>
       <p class="meta">single binary · linux · macos · windows · freebsd · amd64 / arm64 / armv7 · MIT</p>
@@ -164,16 +159,13 @@
       <div class="table-wrap">
         <table>
           <tbody>
-            <tr><th>macOS / Linux</th><td><code>brew install --cask justinh-rahb/tap/moontop</code></td></tr>
-            <tr><th>Windows</th><td><code>scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket</code><br><code>scoop install moontop</code></td></tr>
-            <tr><th>Debian / Ubuntu / Pi OS</th><td><code>sudo apt install ./moontop_*.deb</code> <span class="dim">from <a href="https://github.com/justinh-rahb/moontop/releases/latest">releases ↗</a></span></td></tr>
-            <tr><th>Fedora · Alpine · Arch</th><td><span class="dim"><code>.rpm</code>, <code>.apk</code> and <code>.pkg.tar.zst</code> on <a href="https://github.com/justinh-rahb/moontop/releases/latest">releases ↗</a></span></td></tr>
-            <tr><th>any unix</th><td><code>curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code> <span class="dim">checks the checksum</span></td></tr>
+            <tr><th>Linux · macOS · FreeBSD</th><td><code>curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh</code> <span class="dim">checks the checksum</span></td></tr>
             <tr><th>Go 1.26+</th><td><code>go install github.com/justinh-rahb/moontop/cmd/moontop@latest</code></td></tr>
+            <tr><th>Windows</th><td><span class="dim">the <code>.zip</code> from <a href="https://github.com/justinh-rahb/moontop/releases/latest">releases ↗</a>; put <code>moontop.exe</code> on your PATH</span></td></tr>
           </tbody>
         </table>
       </div>
-      <p class="section-lead small">amd64 and arm64 everywhere, armv7 on Linux — so it runs on the Pi next to the printer, too. macOS builds aren't notarized yet; the Homebrew cask clears the quarantine flag for you.</p>
+      <p class="section-lead small">amd64 and arm64 everywhere, armv7 on Linux — so it runs on the Pi next to the printer, too. macOS builds aren't notarized yet, but the install script's download runs as is.</p>
     </section>
 
     <section class="closing" aria-label="Project links">

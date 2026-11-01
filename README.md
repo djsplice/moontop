@@ -108,12 +108,9 @@ Moontop is one static binary with nothing to install on the printer.
 
 | Platform | Command |
 | --- | --- |
-| **macOS / Linux** (Homebrew) | `brew install --cask justinh-rahb/tap/moontop` |
-| **Windows** (Scoop) | `scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket`<br>`scoop install moontop` |
-| **Debian / Ubuntu / Raspberry Pi OS** | download the `.deb` from [Releases](https://github.com/justinh-rahb/moontop/releases/latest), then `sudo apt install ./moontop_*.deb` |
-| **Fedora / RHEL**, **Alpine**, **Arch** | `.rpm`, `.apk` and `.pkg.tar.zst` on the [Releases](https://github.com/justinh-rahb/moontop/releases/latest) page |
-| **Any Linux, macOS, FreeBSD** | `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh \| sh` |
-| **With Go 1.26+** | `go install github.com/justinh-rahb/moontop/cmd/moontop@latest` |
+| **Linux, macOS, FreeBSD** | `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh \| sh` |
+| **Anywhere with Go 1.26+** | `go install github.com/justinh-rahb/moontop/cmd/moontop@latest` |
+| **Windows** | unzip `moontop_*_windows_amd64.zip` (or `arm64`) from [Releases](https://github.com/justinh-rahb/moontop/releases/latest) and put `moontop.exe` on your `PATH` |
 
 Builds cover amd64 and arm64 everywhere, plus 32-bit ARM (armv7) on Linux, so it also runs on the Pi next to the printer. The install script checks the download against the release checksums and installs to `/usr/local/bin` (or `~/.local/bin`); set `MOONTOP_VERSION` or `MOONTOP_INSTALL_DIR` to change either. `moontop version` shows what you have.
 
@@ -130,7 +127,7 @@ go build -o moontop ./cmd/moontop
 
 </details>
 
-> macOS binaries aren't notarized yet. The Homebrew cask clears the quarantine flag for you; if you download the tarball by hand, run `xattr -d com.apple.quarantine ./moontop` once.
+> macOS binaries aren't notarized yet. The install script's download isn't quarantined, so it just runs; if you download the tarball in a browser instead, run `xattr -d com.apple.quarantine ./moontop` once.
 
 ---
 

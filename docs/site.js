@@ -23,8 +23,7 @@
     });
     // default to the platform's natural choice
     const ua = navigator.userAgent;
-    if (/Windows/.test(ua)) select(box.querySelector('#t-scoop'));
-    else if (/Linux|X11|FreeBSD/.test(ua) && !/Android/.test(ua)) select(box.querySelector('#t-curl'));
+    if (/Windows/.test(ua)) select(box.querySelector('#t-go'));
   });
 
   // copy buttons (copy the command, not the prompt)
