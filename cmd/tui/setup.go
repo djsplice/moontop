@@ -230,7 +230,7 @@ func panesItems(m *model) []setupItem {
 func columnsItems(m *model) []setupItem {
 	c := &m.cfg.Columns
 	var items []setupItem
-	names := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power (heater duty)",
+	names := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power (heater duty)", "history": "History (sparkline, last 5 min)",
 		"size": "Size", "modified": "Modified"}
 	temps := c.Temps()
 	for _, col := range config.TempColumns {

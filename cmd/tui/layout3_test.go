@@ -105,7 +105,7 @@ func TestPowerColumn(t *testing.T) {
 	m = openCategory(t, m, "Columns")
 	m = press(t, m, "down", "down", "down", "space") // power
 	m = press(t, m, "esc", "esc")
-	if strings.Join(m.tempCols, ",") != "state,current,target,power" {
+	if strings.Join(m.tempCols, ",") != "current,target,power,history" {
 		t.Fatalf("cols %v", m.tempCols)
 	}
 	m = update(t, m, notificationMsg{Method: moonraker.MethodStatusUpdate,

@@ -17,6 +17,12 @@ edges. Single-printer, single-host, no auth, no persistence.
 - **Toolhead** — WASD jogging (space jumps Z up, `c` crouches Z
   down), step sizes (0.1 / 1 / 10 / 25 / 50 / 100 mm, or type your
   own), and X/Y/Z fields you can type an absolute position into.
+- **Temperature history** — a braille sparkline per heater and sensor
+  (the Temperatures "Last 5 min" column: each character is two samples
+  at four heights, scaled from the window's low to its high or the
+  target). Filled from Moonraker's temperature store at connect, then
+  sampled every second. When the pane is narrow, State drops first,
+  then History; Setup → Columns turns it off. (Thanks, djsplice.)
 - **Tuning** — live print adjustments and limits, applied at once
   (during a print too): speed factor (`M220`), flow (`M221`), Z offset
   babystep (`SET_GCODE_OFFSET Z_ADJUST`), velocity, acceleration,

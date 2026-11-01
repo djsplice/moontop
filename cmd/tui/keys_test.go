@@ -449,8 +449,8 @@ func TestDashboardConsoleFilters(t *testing.T) {
 
 func TestTemperaturesDropStateColumnWhenNarrow(t *testing.T) {
 	srv := fakePrinter(t)
-	m := readyModel(t, srv) // 160 columns: room for State
-	if strings.Join(m.tempCols, ",") != "state,current,target" || len(m.table.Columns()) != 4 {
+	m := readyModel(t, srv) // 160 columns: State drops first, History stays
+	if strings.Join(m.tempCols, ",") != "current,target,history" || len(m.table.Columns()) != 4 {
 		t.Fatalf("wide: cols=%v table cols=%d", m.tempCols, len(m.table.Columns()))
 	}
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})

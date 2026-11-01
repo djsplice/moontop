@@ -139,8 +139,8 @@ type Columns struct {
 
 // Column choices, in display order.
 var (
-	TempColumns        = []string{"state", "current", "target", "power"}
-	DefaultTempColumns = []string{"state", "current", "target"}
+	TempColumns        = []string{"state", "current", "target", "power", "history"}
+	DefaultTempColumns = []string{"state", "current", "target", "history"}
 	FileColumns        = []string{"size", "modified"}
 	DefaultFileColumns = []string{"size"}
 )

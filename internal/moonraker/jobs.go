@@ -97,3 +97,22 @@ func (c *Client) JobQueueRemove(jobIDs ...string) error {
 // JobQueueStart starts (or resumes) the queue; JobQueuePause pauses it.
 func (c *Client) JobQueueStart() error { _, err := c.call("server.job_queue.start", nil); return err }
 func (c *Client) JobQueuePause() error { _, err := c.call("server.job_queue.pause", nil); return err }
+
+// TempHistory is one sensor's entry in server.temperature_store: about
+// 20 minutes at one sample a second, oldest first.
+type TempHistory struct {
+	Temperatures []float64 `json:"temperatures"`
+	Targets      []float64 `json:"targets"`
+}
+
+// TemperatureStore returns Moonraker's recent temperature history by
+// object name.
+func (c *Client) TemperatureStore() (map[string]TempHistory, error) {
+	res, err := c.call("server.temperature_store", map[string]any{"include_monitors": false})
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]TempHistory
+	err = json.Unmarshal(res, &out)
+	return out, err
+}

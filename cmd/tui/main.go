@@ -34,6 +34,7 @@ import (
 	"github.com/justinh-rahb/moonraker-tui/internal/moo"
 	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
 	"github.com/justinh-rahb/moonraker-tui/internal/prompt"
+	"github.com/justinh-rahb/moonraker-tui/internal/spark"
 )
 
 // ---------------------------------------------------------------------------
@@ -281,6 +282,10 @@ type model struct {
 		cursor int
 	}
 
+	// Temperature history for the sparkline column, per object.
+	tempHist map[string]*spark.Ring
+	historyW int
+
 	jobs     jobsScreen    // Phase 21: history and job queue
 	machine  machineScreen // Phase 22: host, MCUs, services, power
 	extLen   float64
@@ -493,6 +498,7 @@ func (m model) Init() tea.Cmd {
 		m.listenDisconnect(),
 		m.loadFiles(),
 		m.loadGcodeStore(),
+		sampleTick(),
 	)
 }
 
@@ -880,7 +886,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.klippyChanged()
 		// Presets, per-printer settings and the command list may have
 		// changed with the config; re-read them on every init.
-		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client), loadGcodeHelpCmd(m.client))
+		return m, tea.Batch(loadPresetsCmd(m.client), loadPrinterCfgCmd(m.client), loadGcodeHelpCmd(m.client), loadTempStoreCmd(m.client))
 
 	case gcodeHelpMsg:
 		if msg.err == nil {
@@ -984,6 +990,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.machine.open {
 			return m, loadMachineCmd(m.client)
 		}
+		return m, nil
+
+	case sampleMsg:
+		m.sampleTemps()
+		return m, sampleTick()
+
+	case tempStoreMsg:
+		m.backfillTemps(msg)
 		return m, nil
 
 	case jobsLoadedMsg:
@@ -1386,12 +1400,12 @@ func (m *model) resizeLayout() {
 // bubbles/table cells carry 1 column of padding on each side.
 func (m *model) setTableColumns() {
 	const minNameW = 12
-	widths := map[string]int{"state": 9, "current": 9, "target": 9, "power": 6}
-	titles := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power"}
+	widths := map[string]int{"state": 9, "current": 9, "target": 9, "power": 6, "history": historyMinW}
+	titles := map[string]string{"state": "State", "current": "Current", "target": "Target", "power": "Power", "history": "Last 5 min"}
 
 	// The configured columns, minus whatever doesn't fit — State first
-	// (it restates Target), then Power. bubbles/table pads each cell by
-	// one column on each side.
+	// (it restates Target), then History, then Power.
+	// bubbles/table pads each cell by one column on each side.
 	cols := m.cfg.Columns.Temps()
 	need := func(cs []string) int {
 		n := minNameW + 2
@@ -1401,7 +1415,7 @@ func (m *model) setTableColumns() {
 		return n
 	}
 	w := m.layout.tableContentW
-	for _, drop := range []string{"state", "power"} {
+	for _, drop := range []string{"state", "history", "power"} {
 		if need(cols) <= w {
 			break
 		}
@@ -1413,6 +1427,12 @@ func (m *model) setTableColumns() {
 	if nameW < minNameW {
 		nameW = minNameW
 	}
+	// History takes the spare width beyond a comfortable name column.
+	if contains(cols, "history") && nameW > historyNameW {
+		widths["history"] += min(nameW-historyNameW, historyMaxW-historyMinW)
+		nameW = w - need(cols) + minNameW
+	}
+	m.historyW = widths["history"]
 	columns := []table.Column{{Title: "Name", Width: nameW}}
 	for _, c := range cols {
 		columns = append(columns, table.Column{Title: titles[c], Width: widths[c]})
@@ -1477,6 +1497,8 @@ func (m *model) rebuildRows() {
 					p = fmt.Sprintf("%.0f%%", s.Power*100)
 				}
 				row = append(row, p)
+			case "history":
+				row = append(row, m.sparkline(name, s.Target))
 			}
 		}
 		rows = append(rows, row)

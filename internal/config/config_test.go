@@ -146,11 +146,12 @@ func TestPaneOrderAndWidths(t *testing.T) {
 
 func TestColumns(t *testing.T) {
 	var c Columns
-	if strings.Join(c.Temps(), ",") != "state,current,target" || strings.Join(c.FileCols(), ",") != "size" {
+	if strings.Join(c.Temps(), ",") != "state,current,target,history" || strings.Join(c.FileCols(), ",") != "size" {
 		t.Fatal("defaults")
 	}
 	c.ToggleTemp("power")
 	c.ToggleTemp("state")
+	c.ToggleTemp("history")
 	if got := strings.Join(c.Temps(), ","); got != "current,target,power" {
 		t.Fatalf("temps %s", got)
 	}
