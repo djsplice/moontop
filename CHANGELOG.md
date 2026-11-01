@@ -9,71 +9,54 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-01
+
+The first release: a keyboard-driven terminal UI for Klipper printers,
+through Moonraker, covering what you reach for in Mainsail or Fluidd.
+
 ### Added
 
-- Connection manager: `moontop` (and `moontop console`) without a host opens
-  a screen to type an address or pick a recent printer, the last used one
-  preselected. Hosts are normalised (`voron.local` → `voron.local:7125`,
-  `https://` for TLS).
-- Moonraker authorization: sign in as a Moonraker user or with an API key
-  (also `$MOONRAKER_API_KEY`). Refresh tokens and keys are remembered per
-  printer in an owner-only `hosts.json`; passwords never are. Expired access
-  tokens are refreshed for the websocket and file transfers.
-- File manager: a Files tab in the Jobs screen (`f` in the Files pane opens it
-  at the selected file) with folders, slicer metadata columns, a details
-  column, and print, queue, rename, copy, move, delete, new folder, upload and
-  upload & print (`P`) from this computer through a local file browser.
-- `moontop upload FILE…` and `moontop print FILE` (upload, then start it), for
-  scripts and slicer post-processing. Uploads stream from disk.
-- The Files pane and the file manager follow `notify_filelist_changed`, so
-  uploads and changes from elsewhere appear at once.
-- Colour schemes in setup → Display: `phosphor` (all green), `amber`,
-  `terminal` (your terminal's palette), `mono`, `solarized`, `gruvbox`,
-  `nord`, `dracula`, `catppuccin`, `tokyo-night` and `light`.
-- Dashboard with Status, Temperatures, Toolhead, Tuning, Files, Console, AFC,
-  Macros, Extruder and Outputs panes, laid out by a configurable layout solver.
-- Klippy lifecycle handling: state banner, resubscribe on ready, restart and
-  firmware restart (`F5` / `F6`), E-stop, highlighted `!!` errors, console
-  backfill.
-- `moontop console` (an inline line console) and `moontop gcode` (one-shot
-  gcode from arguments or stdin, with exit codes for scripts).
-- Keymap registry driving keys, footer and the `?` help overlay; console
-  filters for heat-wait and TMC noise.
-- Setup screen (`F2` / `,`) with settings in `~/.config/moontop/config.toml`
-  and per-printer settings in Moonraker's database.
-- Heater targets, cooldown and presets (including Mainsail's) from the
-  Temperatures pane, with braille sparkline history backfilled from
-  `server.temperature_store`.
-- Toolhead: WASD jog, space / `c` for Z, typed absolute moves, homing, motors
-  off, endstop query, QGL / Z tilt when the printer has it.
-- Tuning and Extruder panes on a shared numeric field widget: speed and flow
-  factor, Z-offset babystep, velocity limits, tool select, extrude / retract,
-  pressure advance, filament load / unload.
-- Outputs pane for fans, output pins and LEDs, built from each object's type.
-- AFC pane for lanes from `AFC.lanes`: material, colour, weight, load / unload
+- **Connecting:** a connection manager with your recent printers (the last
+  one preselected), or `-host` / `$MOONRAKER_HOST`. Moonraker logins and API
+  keys (`$MOONRAKER_API_KEY` too); refresh tokens and keys are kept per
+  printer in an owner-only `hosts.json`, passwords never. `https://` for
+  printers behind TLS.
+- **Dashboard:** Files, Toolhead, Tuning, Temperatures, Console, AFC,
+  Extruder, Outputs and Macros panes, laid out by a solver you can reorder
+  and resize. Klippy state banner, restart and firmware restart (`F5` /
+  `F6`), E-stop from anywhere (`Ctrl+X`).
+- **Temperatures:** set targets in place, cooldown, presets (Mainsail's too),
+  braille sparkline history backfilled from `server.temperature_store`.
+- **Toolhead:** WASD jog, space / `c` for Z, typed absolute moves, homing,
+  motors off, endstops, QGL or Z tilt when the printer has it.
+- **Tuning and Extruder:** speed and flow, Z-offset babystep, velocity limits,
+  tool select, extrude / retract, pressure advance, and filament load /
+  unload detected from each printer's own macros.
+- **Outputs:** fans, output pins and LEDs, built from your config.
+- **AFC:** lanes from `AFC.lanes` with material, colour, weight, load / unload
   / eject.
-- Macros: a browser of every macro (`F3` / `g`), a pinned Macros pane and
-  parameter forms.
-- Macro prompts (`action:prompt_*`) and exclude object (`O` / `F4`).
-- Jobs screen (`J` / `F7`): print history, totals and the job queue.
-- Machine screen (`M` / `F8`): host and MCU stats, services, power devices,
-  reboot / shutdown.
-- Software screen (`U` / `F9`): update manager with streamed output and
-  announcements.
-- Bed mesh screen (`B` / `F11`): coloured grid of values, profiles, calibrate,
-  screws tilt and the manual probe dialog.
-- Logs (`L` / `F12`), config files with `$EDITOR` editing (`E`), console tab
-  completion with macro parameter hints.
-- `moontop version`, release builds for Linux, macOS, Windows and FreeBSD,
-  Homebrew cask, Scoop manifest, deb / rpm / apk / Arch packages and an
-  install script.
-- Project website (GitHub Pages, from `docs/`) with screenshots of every
-  screen.
+- **Macros:** a browser of every macro (`F3` / `g`), a pinned Macros pane,
+  parameter forms, and macro prompts (`action:prompt_*`).
+- **Printing:** pause / resume / cancel, progress and ETA, exclude object
+  (`O` / `F4`).
+- **Jobs** (`J` / `F7`): a file manager (folders, slicer details, rename,
+  copy, move, delete, upload, upload & print through a local file browser),
+  print history and totals, and the job queue. The Files pane and the file
+  manager follow changes on the printer as they happen.
+- **Machine** (`M` / `F8`), **Software** (`U` / `F9`), **Bed mesh** (`B` /
+  `F11`, a coloured grid of values, profiles, screws tilt, manual probe),
+  **Logs** (`L` / `F12`) and **Config** (`E`, edit in `$EDITOR`).
+- **Console:** tab completion with macro parameter hints, filters for
+  heat-wait and TMC noise, history.
+- **Setup** (`F2`): panes, columns, heaters, filters, jog steps, safety,
+  presets and twelve colour schemes, from all-green `phosphor` to your
+  terminal's own palette. Settings in `~/.config/moontop/config.toml`,
+  per-printer ones in Moonraker's database.
+- **Command line:** `moontop console` (an inline gcode console),
+  `moontop gcode` (one-shot gcode with exit codes), `moontop upload` /
+  `moontop print`, `moontop dump`, `moontop version`.
+- Builds for Linux, macOS, Windows and FreeBSD on amd64 and arm64 (and armv7
+  on Linux), an install script, and `go install`.
 
-### Changed
-
-- Module path is now `github.com/justinh-rahb/moontop` and the command lives
-  in `cmd/moontop`, so `go install github.com/justinh-rahb/moontop/cmd/moontop@latest`
-  works.
-
-[Unreleased]: https://github.com/justinh-rahb/moontop/commits/main
+[Unreleased]: https://github.com/justinh-rahb/moontop/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/justinh-rahb/moontop/releases/tag/v0.1.0
