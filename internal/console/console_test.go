@@ -128,7 +128,7 @@ func TestHistoryCapAndPersistence(t *testing.T) {
 func TestDefaultHistoryPathHonoursXDG(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/x/state")
 	p, err := console.DefaultHistoryPath()
-	if err != nil || p != "/x/state/moontop/console_history" {
+	if err != nil || p != filepath.Join("/x/state", "moontop", "console_history") {
 		t.Fatalf("got %q, %v", p, err)
 	}
 }

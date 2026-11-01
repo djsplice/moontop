@@ -75,7 +75,7 @@ func TestLoadReportsBadTOML(t *testing.T) {
 
 func TestDefaultPathHonoursXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/x/cfg")
-	if p, _ := DefaultPath(); p != "/x/cfg/moontop/config.toml" {
+	if p, _ := DefaultPath(); p != filepath.Join("/x/cfg", "moontop", "config.toml") {
 		t.Fatal(p)
 	}
 }
