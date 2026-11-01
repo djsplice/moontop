@@ -652,6 +652,9 @@ func (m model) initialize() tea.Cmd {
 				subMap[name] = outputSubscription(o)
 				needSettings = needSettings || o.kind == outPin || o.kind == outLED
 			}
+			if isLevelingObject(name) {
+				subMap[name] = []string{"applied"}
+			}
 			// Macro parameters live in their templates (configfile).
 			needSettings = needSettings || strings.HasPrefix(name, "gcode_macro ")
 		}
@@ -719,7 +722,7 @@ func mergeStatus(
 ) {
 	for name, fields := range objects {
 		switch {
-		case isAFCObject(name), name == "gcode_move", isOutputObject(name):
+		case isAFCObject(name), name == "gcode_move", isOutputObject(name), isLevelingObject(name):
 			// Generic: store every reported field as-is.
 			raw.merge(name, fields)
 		case name == "webhooks":

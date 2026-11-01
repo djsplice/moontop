@@ -22,8 +22,13 @@ edges. Single-printer, single-host, no auth, no persistence.
   babystep (`SET_GCODE_OFFSET Z_ADJUST`), velocity, acceleration,
   square corner velocity, minimum cruise ratio.
 - **Extruder** — tool select (`T0`–`T3`, from the printer's own
-  commands), extrude / retract with length and speed, pressure advance
-  and smooth time for the active extruder.
+  commands), extrude / retract with length and speed, filament load /
+  unload, pressure advance and smooth time for the active extruder.
+  There's no standard load or unload command, so Moontop uses the first
+  the printer has of `LOAD_FILAMENT` / `FILAMENT_LOAD` / `M701` (and
+  `UNLOAD_FILAMENT` / `FILAMENT_UNLOAD` / `M702` / `M603`), then any
+  macro named like one (`QIDI_LOAD_FILAMENT`); setup → Extruder sets
+  them per printer.
 - **Outputs** — every fan, output pin and LED the printer has, built from
   the object type: part fan (`M106`/`M107`), `fan_generic`
   (`SET_FAN_SPEED`), heater and controller fans (read-only, with rpm),
@@ -160,12 +165,12 @@ Panes are numbered in their titles: `1` Files, `2` Toolhead, `3` Tuning,
 | Pane | Keys |
 | ---- | ---- |
 | Files | `↑↓` or `j k` select, `/` filter, `Enter` print (confirms) |
-| Toolhead | `w a s d` jog Y+ X− Y− X+, `space` jog Z up, `c` jog Z down (`PgUp/PgDn` too), `↑↓` select X / Y / Z / step, type a number (or `Enter`) to edit it in place — `Enter` moves there (absolute) or uses that step, `Esc` cancels; `← →` or `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only) |
+| Toolhead | `w a s d` jog Y+ X− Y− X+, `space` jog Z up, `c` jog Z down (`PgUp/PgDn` too), `↑↓` select X / Y / Z / step, type a number (or `Enter`) to edit it in place — `Enter` moves there (absolute) or uses that step, `Esc` cancels; `← →` or `[ ]` step size, `H` home all, `x y z` home one axis, `m` motors off (idle only), `l` level the gantry (`QUAD_GANTRY_LEVEL` or `Z_TILT_ADJUST`, only on printers with `quad_gantry_level` / `z_tilt`; the pane shows whether it's applied) |
 | Tuning | `↑↓` or `j k` select a row; `← →` adjust it at once by its step (speed 5 %, flow 1 %, Z offset 0.01 mm, velocity 10, accel 500; `shift` ×10); type a number (or `Enter`) to edit it in place, `Enter` sets it, `Esc` cancels |
 | `F3` / `g` | Macro browser: type to filter, `↑↓` select, `Enter` run, `space` pin / unpin, `Esc` clears the filter, then closes |
 | Macros | `↑↓` select a pinned macro, `Enter` run (a parameter form first when it takes parameters: `↑↓` / `Tab` field, `Enter` run, `Esc` cancel), `x` unpin |
 | Outputs | `↑↓` select, `← →` adjust (5 %; LEDs 10 % brightness; digital pins on/off), type a value, `x` off, `o` LED colour (hex) |
-| Extruder | `+` extrude, `-` retract (length at speed), `↑↓` select a row, `← →` adjust (length and speed step through presets; pressure advance by 0.005), type to set; on the Tool row type the tool number and `Enter` to change tools |
+| Extruder | `+` extrude, `-` retract (length at speed), `l` load, `u` unload (a form first when the macro takes parameters), `↑↓` select a row, `← →` adjust (length and speed step through presets; pressure advance by 0.005), type to set; on the Tool row type the tool number and `Enter` to change tools |
 | Temperatures | `↑↓` or `j k` select, `Enter` set the target in place (type °C, `Enter` sends, `Esc` cancels), `t` preheat preset, `x` selected heater off, `X` all heaters off |
 | Console | type gcode, `Enter` send, `↑↓` history |
 | AFC | `↑↓` or `j k` select lane, `Enter` load into its tool, `u` unload, `e` eject (all confirm), `t` tool, `m` material, `w` weight, `o` colour, `s` spool ID, `x` clear message |

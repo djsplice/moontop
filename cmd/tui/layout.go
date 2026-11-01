@@ -99,6 +99,7 @@ type layoutInput struct {
 	extLines     int // Extruder pane content lines
 	outLines     int // Outputs pane content lines
 	macroLines   int // Macros pane content lines
+	jogLines     int // Toolhead content lines (more than jogContentMin with levelling)
 }
 
 // contentLines is a bottom pane's content height.
@@ -194,7 +195,7 @@ func defaultLayoutInput(termW, termH, sensorCount int) layoutInput {
 func (in layoutInput) specs() map[focusArea]paneSpec {
 	return map[focusArea]paneSpec{
 		focusFiles:  {minW: 24, naturalW: 32, weight: in.weights[focusFiles], innerH: 1 + 8},
-		focusJog:    {minW: 18, naturalW: 26, weight: in.weights[focusJog], innerH: 1 + jogContentMin},
+		focusJog:    {minW: 18, naturalW: 26, weight: in.weights[focusJog], innerH: 1 + max(jogContentMin, in.jogLines)},
 		focusTuning: {minW: 20, naturalW: 30, weight: in.weights[focusTuning], innerH: 1 + tuningContentLines},
 		focusTable:  {minW: 30, naturalW: 46, weight: in.weights[focusTable], innerH: 2 + in.sensorCount},
 	}

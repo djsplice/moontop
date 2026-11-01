@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,10 @@ func (m *model) handleExtruderKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	sign := 0.0
 	switch {
+	case key.Matches(msg, *keys.FilLoad):
+		return m.runFilament(false)
+	case key.Matches(msg, *keys.FilUnload):
+		return m.runFilament(true)
 	case key.Matches(msg, *keys.Extrude):
 		sign = 1
 	case key.Matches(msg, *keys.Retract):
@@ -179,7 +184,7 @@ func (m *model) sendExtrude(e float64) tea.Cmd {
 }
 
 // extruderContentLines: up to 5 rows, a blank line, 2 hint lines.
-func extruderContentLines(m *model) int { return len(extruderFields(m)) + 3 }
+func extruderContentLines(m *model) int { return len(extruderFields(m)) + 4 }
 
 func (m model) renderExtruder() string {
 	w := m.layout.w(focusExtruder) - panelInnerXReserve()
@@ -192,8 +197,23 @@ func (m model) renderExtruder() string {
 			act = "+ - off: nozzle too cold"
 		}
 	}
+	// Load / unload: the commands this printer will get.
+	fil := "l u: no load macro (F2)"
+	if ld, ul := m.filamentCommand(false), m.filamentCommand(true); ld != "" || ul != "" {
+		fil = ""
+		if ld != "" {
+			fil = "l load"
+		}
+		if ul != "" {
+			fil += map[bool]string{true: "  ", false: ""}[fil != ""] + "u unload"
+		}
+		if full := fil + "  (" + strings.Trim(ld+" "+ul, " ") + ")"; lipgloss.Width(full) <= w {
+			fil = full
+		}
+	}
 	lines = append(lines, "",
 		jogHintStyle.Render(clipWidth(act, w)),
+		jogHintStyle.Render(clipWidth(fil, w)),
 		jogHintStyle.Render(clipWidth("←→ adjust  type a value", w)))
 	return strings.Join(lines, "\n")
 }

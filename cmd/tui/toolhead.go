@@ -173,6 +173,8 @@ func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 		return m.home("G28 Y", "home Y")
 	case key.Matches(msg, *keys.HomeZ):
 		return m.home("G28 Z", "home Z")
+	case key.Matches(msg, *keys.Level):
+		return m.runLeveling()
 	case key.Matches(msg, *keys.MotorsOff):
 		if ok, why := whileIdle(m); !ok {
 			return m.refuse("motors off only works " + why)
@@ -416,5 +418,8 @@ func (m model) renderJog() string {
 	out := append(rows, "")
 	out = append(out, pad, "")
 	out = append(out, hints...)
+	if lv := m.levelingLine(contentW); lv != "" {
+		out = append(out, lv)
+	}
 	return strings.Join(out, "\n")
 }

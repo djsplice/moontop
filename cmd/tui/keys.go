@@ -116,6 +116,7 @@ var keys = struct {
 	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract       *key.Binding
 	OutputOff, LEDColor                                                  *key.Binding
 	Macros, MacroMove, MacroRun, MacroUnpin                              *key.Binding
+	FilLoad, FilUnload, Level                                            *key.Binding
 	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
 	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
 	ConsoleSend, ConsoleHistory                                          *key.Binding
@@ -174,6 +175,9 @@ var keys = struct {
 	FieldEdit:   bind([]string{"enter"}, "enter", "edit the selected row"),
 	Extrude:     bind([]string{"+", "="}, "+", "extrude the length at the speed"),
 	Retract:     bind([]string{"-"}, "-", "retract the length at the speed"),
+	FilLoad:     bind([]string{"l"}, "l", "load filament (the printer's load macro; setup → Extruder)"),
+	FilUnload:   bind([]string{"u"}, "u", "unload filament (the printer's unload macro)"),
+	Level:       bind([]string{"l"}, "l", "level the gantry: QUAD_GANTRY_LEVEL or Z_TILT_ADJUST"),
 	MacroMove:   bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select a pinned macro"),
 	MacroRun:    bind([]string{"enter"}, "enter", "run it (a form first when it takes parameters)"),
 	MacroUnpin:  bind([]string{"x"}, "x", "unpin it from this pane"),
@@ -280,6 +284,7 @@ var registry = []keyEntry{
 	{b: keys.ThEditApply, scope: scopeToolheadEdit, short: "set", footer: true},
 	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 	{b: keys.MotorsOff, scope: scopeToolhead, when: whileIdle},
+	{b: keys.Level, scope: scopeToolhead, short: "level", footer: true, when: hasLeveling},
 
 	{b: keys.FieldMove, scope: scopeTuning, short: "row", footer: true},
 	{b: keys.FieldAdjust, scope: scopeTuning, short: "adjust", footer: true},
@@ -288,6 +293,8 @@ var registry = []keyEntry{
 
 	{b: keys.Extrude, scope: scopeExtruder, short: "extrude", footer: true, when: canExtrude},
 	{b: keys.Retract, scope: scopeExtruder, short: "retract", footer: true, when: canExtrude},
+	{b: keys.FilLoad, scope: scopeExtruder, short: "load", footer: true, when: haveFilamentCmds},
+	{b: keys.FilUnload, scope: scopeExtruder, short: "unload", footer: true, when: haveFilamentCmds},
 	{b: keys.FieldMove, scope: scopeExtruder, short: "row", footer: true},
 	{b: keys.FieldAdjust, scope: scopeExtruder, short: "adjust", footer: true},
 	{b: keys.FieldType, scope: scopeExtruder, short: "type"},

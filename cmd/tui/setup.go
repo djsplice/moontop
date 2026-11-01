@@ -74,6 +74,7 @@ func init() {
 		{name: "Console", about: "Lines matching a filter are hidden; ctrl+o shows them. Saved to the config file.", items: consoleItems,
 			add: &setupEdit{prompt: "Filter pattern (Go regexp)", apply: addFilter}, addAs: "add a filter"},
 		{name: "Toolhead", about: "Jog step sizes and feedrates. Saved to the config file.", items: toolheadItems},
+		{name: "Extruder", about: "Commands for l (load) and u (unload) in Extruder; empty = detect from the printer's macros. Saved to the printer.", items: extruderItems},
 		{name: "Safety", about: "Prompts before dangerous actions. Saved to the config file.", items: safetyItems},
 		{name: "Presets", about: "Preheat presets for t in Temperatures. Moontop's are saved to the printer; Mainsail's are edited in Mainsail.", items: presetItems,
 			add: &setupEdit{prompt: "Name for a preset of the current heater targets", apply: addPreset}, addAs: "save current targets as a preset"},
@@ -812,4 +813,34 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func extruderItems(m *model) []setupItem {
+	item := func(label string, unload bool, field func(m *model) *string) setupItem {
+		cur := *field(m)
+		value := cur
+		if cur == "" {
+			value = "detect"
+			if d := m.filamentCommand(unload); d != "" {
+				value = "detect: " + d
+			} else {
+				value = "detect: none found"
+			}
+		}
+		return setupItem{
+			label: label, value: value, initial: cur,
+			edit: &setupEdit{prompt: label + ": a command or macro name (empty = detect)", apply: func(m *model, v string) (tea.Cmd, error) {
+				v = strings.ToUpper(strings.TrimSpace(v))
+				if v != "" && (strings.ContainsAny(v, " \t;#=") || (m.gcodeCommands != nil && !m.gcodeCommands[v])) {
+					return nil, fmt.Errorf("%q isn't a command this printer has", v)
+				}
+				*field(m) = v
+				return m.savePrinter(), nil
+			}},
+		}
+	}
+	return []setupItem{
+		item("Load command", false, func(m *model) *string { return &m.printerCfg.LoadMacro }),
+		item("Unload command", true, func(m *model) *string { return &m.printerCfg.UnloadMacro }),
+	}
 }

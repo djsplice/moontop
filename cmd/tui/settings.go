@@ -126,6 +126,10 @@ func (m *model) layoutInput(reservedRows int) layoutInput {
 	in.extLines = extruderContentLines(m)
 	in.outLines = outputsContentLines(m)
 	in.macroLines = macrosContentLines(m)
+	in.jogLines = jogContentMin
+	if _, ok := m.leveling(); ok {
+		in.jogLines++
+	}
 	return in
 }
 

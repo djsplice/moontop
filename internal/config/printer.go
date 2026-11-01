@@ -17,6 +17,10 @@ type Printer struct {
 	Presets      []Preset     `json:"presets,omitempty"`
 	// Macros pinned to the dashboard's Macros pane, sorted.
 	Macros []string `json:"macros,omitempty"`
+	// Filament load / unload commands for the Extruder pane; empty means
+	// detect from the printer's macros.
+	LoadMacro   string `json:"load_macro,omitempty"`
+	UnloadMacro string `json:"unload_macro,omitempty"`
 }
 
 // MacroPinned reports whether a macro is on the Macros pane.
@@ -58,7 +62,8 @@ func (p *Printer) EffectiveTemperatures(file Temperatures) Temperatures {
 
 // HasSettings reports whether anything is stored for this printer.
 func (p *Printer) HasSettings() bool {
-	return len(p.Temperatures.Hidden) > 0 || len(p.Temperatures.Rename) > 0 || len(p.Presets) > 0 || len(p.Macros) > 0
+	return len(p.Temperatures.Hidden) > 0 || len(p.Temperatures.Rename) > 0 || len(p.Presets) > 0 || len(p.Macros) > 0 ||
+		p.LoadMacro != "" || p.UnloadMacro != ""
 }
 
 // Hidden reports whether object is hidden in t.
