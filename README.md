@@ -5,11 +5,14 @@
 **A keyboard-driven terminal UI for Klipper printers, through Moonraker.**<br>
 Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on any machine that can see your printer.
 
+[![CI](https://github.com/justinh-rahb/moontop/actions/workflows/ci.yml/badge.svg)](https://github.com/justinh-rahb/moontop/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/justinh-rahb/moontop?sort=semver&color=2ea043)](https://github.com/justinh-rahb/moontop/releases/latest)
 [![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Klipper](https://img.shields.io/badge/Klipper-Moonraker-b12f36)](https://moonraker.readthedocs.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/wildtang3nt)
 
-[Quick start](#quick-start) · [The dashboard](#the-dashboard) · [Screens](#full-screen-tools) · [Keys](#keyboard-reference) · [Settings](#settings) · [Printers](#printer-support)
+[Install](#install) · [Quick start](#quick-start) · [The dashboard](#the-dashboard) · [Screens](#full-screen-tools) · [Keys](#keyboard-reference) · [Settings](#settings) · [Printers](#printer-support)
 
 </div>
 
@@ -62,6 +65,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 ## Contents
 
 - [Highlights](#highlights)
+- [Install](#install)
 - [Quick start](#quick-start)
 - [Four ways to run it](#four-ways-to-run-it)
 - [The dashboard](#the-dashboard) — the nine panes
@@ -73,6 +77,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 - [Printer support](#printer-support)
 - [Development](#development)
 - [Credits](#credits)
+- [Support](#support)
 
 ---
 
@@ -95,24 +100,48 @@ Moontop only ever shows what the printer reports. A target you set appears when 
 
 ---
 
-## Quick start
+## Install
 
-Moontop is a single Go binary. Build it with Go 1.26 or newer:
+Moontop is one static binary with nothing to install on the printer.
+
+| Platform | Command |
+| --- | --- |
+| **macOS / Linux** (Homebrew) | `brew install --cask justinh-rahb/tap/moontop` |
+| **Windows** (Scoop) | `scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket`<br>`scoop install moontop` |
+| **Debian / Ubuntu / Raspberry Pi OS** | download the `.deb` from [Releases](https://github.com/justinh-rahb/moontop/releases/latest), then `sudo apt install ./moontop_*.deb` |
+| **Fedora / RHEL**, **Alpine**, **Arch** | `.rpm`, `.apk` and `.pkg.tar.zst` on the [Releases](https://github.com/justinh-rahb/moontop/releases/latest) page |
+| **Any Linux, macOS, FreeBSD** | `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh \| sh` |
+| **With Go 1.26+** | `go install github.com/justinh-rahb/moontop/cmd/moontop@latest` |
+
+Builds cover amd64 and arm64 everywhere, plus 32-bit ARM (armv7) on Linux, so it also runs on the Pi next to the printer. The install script checks the download against the release checksums and installs to `/usr/local/bin` (or `~/.local/bin`); set `MOONTOP_VERSION` or `MOONTOP_INSTALL_DIR` to change either. `moontop version` shows what you have.
+
+<details>
+<summary><b>Build from source</b></summary>
+
+<br>
 
 ```sh
 git clone https://github.com/justinh-rahb/moontop
 cd moontop
-go build -o moontop ./cmd/tui
+go build -o moontop ./cmd/moontop
 ```
+
+</details>
+
+> macOS binaries aren't notarized yet. The Homebrew cask clears the quarantine flag for you; if you download the tarball by hand, run `xattr -d com.apple.quarantine ./moontop` once.
+
+---
+
+## Quick start
 
 Point it at Moonraker (usually port 7125):
 
 ```sh
-./moontop -host 192.168.1.100:7125
+moontop -host 192.168.1.100:7125
 
 # or set it once
 export MOONRAKER_HOST=192.168.1.100:7125
-./moontop
+moontop
 ```
 
 Then press **`?`** for every key, or **`F2`** for settings. A few things worth knowing straight away:
@@ -565,11 +594,12 @@ Not yet: Moonraker authentication (API keys, login), file upload and file manage
 ## Development
 
 ```sh
-go test ./...          # everything, against a fake Moonraker
-go test -race ./...
+go build -o moontop ./cmd/moontop
+gofmt -l . && go vet ./...
+go test -race ./...    # everything, against a fake Moonraker
 ```
 
-Every feature ships with tests. `internal/moonraker/moonrakertest` is a fake Moonraker (websocket JSON-RPC and HTTP file endpoints) the tests drive the real model against.
+Every change ships with tests and, when it changes what you see, docs and a `CHANGELOG.md` entry. `internal/moonraker/moonrakertest` is a fake Moonraker (websocket JSON-RPC and HTTP file endpoints) the tests drive the real model against. [AGENTS.md](AGENTS.md) covers the architecture rules and conventions (for people and coding agents alike), [CONTRIBUTING.md](.github/CONTRIBUTING.md) the PR process, and [docs/RELEASING.md](docs/RELEASING.md) how releases are cut from the changelog.
 
 <details>
 <summary><b>Project layout</b></summary>
@@ -577,7 +607,7 @@ Every feature ships with tests. `internal/moonraker/moonrakertest` is a fake Moo
 <br>
 
 ```text
-cmd/tui/                 the moontop binary
+cmd/moontop/             the moontop binary
   main.go                dashboard model, Update, View, initialize (one subscribe path)
   keys.go                keymap registry: every key, its scope, its help
   help.go                key routing and the ? overlay
@@ -600,7 +630,7 @@ internal/
   macros/                macro parameters from templates
   prompt/                action:prompt_* parser
   spark/                 braille sparklines
-docs/                    ROADMAP.md (Mainsail gap audit, phases), UI-PLAN.md
+docs/                    ROADMAP.md (Mainsail gap audit, phases), UI-PLAN.md, RELEASING.md
 testdata/                printer status fixtures (a U1's AFC-Lite)
 ```
 
@@ -627,6 +657,10 @@ testdata/                printer status fixtures (a U1's AFC-Lite)
 - [Charm](https://charm.sh/)'s Bubble Tea, Bubbles and Lip Gloss.
 - **djsplice** for the braille temperature sparklines, and **jimmyjon711** (AFC) for the lane rules and pointing at [SocketKeys](https://github.com/N3MI-DG/SocketKeys).
 - [retrograde](https://github.com/justinh-rahb/retrograde) for the AFC-Lite rules and the U1 fixture.
+
+## Support
+
+If Moontop saves you a trip to the browser, you can [buy me a coffee](https://buymeacoffee.com/wildtang3nt). Bugs and ideas go in [issues](https://github.com/justinh-rahb/moontop/issues); security reports go through [private reporting](https://github.com/justinh-rahb/moontop/security/advisories/new) ([SECURITY.md](.github/SECURITY.md)).
 
 ## License
 

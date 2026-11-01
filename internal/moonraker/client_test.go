@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker/moonrakertest"
+	"github.com/justinh-rahb/moontop/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker/moonrakertest"
 )
 
 const wait = 2 * time.Second

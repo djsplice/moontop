@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker"
 )
 
 // Runner sends gcode one command at a time and prints Klipper's output

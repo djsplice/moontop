@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/justinh-rahb/moontop/security/advisories/new
+    about: Please report security problems privately, not as an issue.
+  - name: Klipper or Moonraker problem
+    url: https://www.klipper3d.org/Contact.html
+    about: If the printer misbehaves in Mainsail or Fluidd too, it's probably not Moontop.

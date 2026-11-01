@@ -1,0 +1,5 @@
+/moontop
+/moontop.exe
+/dist/
+*.test
+*.out

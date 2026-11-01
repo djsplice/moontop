@@ -1,4 +1,4 @@
-module github.com/justinh-rahb/moonraker-tui
+module github.com/justinh-rahb/moontop
 
 go 1.26
 

@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Moontop doesn't work as it should
+labels: [bug]
+assignees: [justinh-rahb]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? Screenshots help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Moontop against ...
+        2. Press ...
+        3. See ...
+  - type: input
+    id: version
+    attributes:
+      label: Moontop version
+      description: Output of `moontop version`.
+      placeholder: moontop 0.1.0 (abcdef1, 2026-11-01) linux/amd64
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: OS and terminal
+      placeholder: macOS 15, iTerm2 3.5 / Windows 11, Windows Terminal / Ubuntu 24.04 over SSH, tmux
+    validations:
+      required: true
+  - type: input
+    id: printer
+    attributes:
+      label: Printer and firmware
+      description: Printer model, Klipper and Moonraker versions, and AFC or other add-ons if relevant. For pane or state problems, `moontop dump -host ip:port` output helps (check it for anything private first).
+      placeholder: Voron 2.4, Klipper v0.13.0-123, Moonraker v0.9.3-45
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or logs
+      description: Anything relevant from the Console pane, `moonraker.log` or `klippy.log`.
+      render: text

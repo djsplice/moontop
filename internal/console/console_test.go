@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justinh-rahb/moonraker-tui/internal/console"
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker/moonrakertest"
+	"github.com/justinh-rahb/moontop/internal/console"
+	"github.com/justinh-rahb/moontop/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker/moonrakertest"
 )
 
 func TestClassifyLine(t *testing.T) {

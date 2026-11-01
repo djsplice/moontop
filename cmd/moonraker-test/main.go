@@ -18,7 +18,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker"
 )
 
 func main() {

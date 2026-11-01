@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/justinh-rahb/moonraker-tui/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker"
 )
 
 // Kind classifies one console line for styling.

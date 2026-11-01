@@ -1,0 +1,119 @@
+# GoReleaser v2 config. Validated in CI (`goreleaser check` + snapshot build).
+# Releases are cut by .github/workflows/release.yml — see docs/RELEASING.md.
+version: 2
+
+project_name: moontop
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: moontop
+    main: ./cmd/moontop
+    binary: moontop
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows, freebsd]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+      - goos: freebsd
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: moontop
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # Release notes come from CHANGELOG.md via --release-notes.
+  disable: true
+
+nfpms:
+  - id: packages
+    package_name: moontop
+    homepage: https://github.com/justinh-rahb/moontop
+    maintainer: Justin Hayes <justinh-rahb@users.noreply.github.com>
+    description: A terminal UI for Klipper printers, talking to Moonraker.
+    license: MIT
+    formats: [deb, rpm, apk, archlinux]
+    bindir: /usr/bin
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/moontop/README.md
+      - src: LICENSE
+        dst: /usr/share/licenses/moontop/LICENSE
+
+homebrew_casks:
+  - name: moontop
+    binaries: [moontop]
+    directory: Casks
+    homepage: https://github.com/justinh-rahb/moontop
+    description: A terminal UI for Klipper printers, talking to Moonraker.
+    skip_upload: auto
+    repository:
+      owner: justinh-rahb
+      name: homebrew-tap
+      branch: main
+      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+    commit_author:
+      name: moontop-release-bot
+      email: justinh-rahb@users.noreply.github.com
+    commit_msg_template: "moontop {{ .Tag }}"
+    hooks:
+      post:
+        # Binaries are not notarized; drop the quarantine flag so Gatekeeper lets them run.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/moontop"]
+          end
+
+scoops:
+  - name: moontop
+    homepage: https://github.com/justinh-rahb/moontop
+    description: A terminal UI for Klipper printers, talking to Moonraker.
+    license: MIT
+    skip_upload: auto
+    repository:
+      owner: justinh-rahb
+      name: scoop-bucket
+      branch: main
+      token: '{{ envOrDefault "SCOOP_BUCKET_TOKEN" "" }}'
+    commit_author:
+      name: moontop-release-bot
+      email: justinh-rahb@users.noreply.github.com
+    commit_msg_template: "moontop {{ .Tag }}"
+
+release:
+  github:
+    owner: justinh-rahb
+    name: moontop
+  prerelease: auto
+  footer: |
+    ---
+    **Install:** `brew install --cask justinh-rahb/tap/moontop` · `scoop bucket add justinh-rahb https://github.com/justinh-rahb/scoop-bucket && scoop install moontop` · `curl -fsSL https://raw.githubusercontent.com/justinh-rahb/moontop/main/install.sh | sh`
