@@ -241,8 +241,12 @@ func (c *Client) refresh() bool {
 // do sends an HTTP request with the client's credentials, refreshing
 // the access token and retrying once on a 401.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
+	return c.doWith(httpClient, req)
+}
+
+func (c *Client) doWith(hc *http.Client, req *http.Request) (*http.Response, error) {
 	c.credentials().apply(req.Header)
-	resp, err := httpClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil || resp.StatusCode != http.StatusUnauthorized || req.GetBody == nil && req.Body != nil {
 		return resp, err
 	}
@@ -257,5 +261,5 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		}
 	}
 	c.credentials().apply(retry.Header)
-	return httpClient.Do(retry)
+	return hc.Do(retry)
 }

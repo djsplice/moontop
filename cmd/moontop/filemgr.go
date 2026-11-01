@@ -46,7 +46,7 @@ var fmPrompts = map[fmMode]string{
 	fmMkdir:  "New folder name",
 	fmMove:   "Move to folder (path in gcodes; empty = the top)",
 	fmCopy:   "Copy as",
-	fmUpload: "Upload a file from this computer (path)",
+	fmUpload: "File on this computer to upload (path)",
 }
 
 const (
@@ -71,6 +71,9 @@ type fileManager struct {
 	target fmRow // the row an edit applies to
 
 	selectName string // select this entry after the next load
+
+	pick        localPicker // choosing a local file to upload
+	uploadPrint bool        // the typed-path upload also prints
 }
 
 // fmRow is one line of the listing: the parent link, a folder or a file.
@@ -238,6 +241,9 @@ func (m *model) startFmEdit(mode fmMode, target fmRow, initial string) {
 func (m *model) handleFileMgrKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	f := &m.jobs.files
 	c := m.client
+	if f.pick.open {
+		return m.handlePickKey(msg), true
+	}
 	if f.mode != fmNone {
 		switch msg.String() {
 		case "esc":
@@ -312,8 +318,9 @@ func (m *model) handleFileMgrKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		m.startFmEdit(fmMkdir, fmRow{}, "")
 		return nil, true
 	case "u":
-		m.startFmEdit(fmUpload, fmRow{}, "")
-		return nil, true
+		return m.openPicker(false), true
+	case "P":
+		return m.openPicker(true), true
 	}
 	if !ok {
 		return nil, false
@@ -412,17 +419,9 @@ func (m *model) applyFmEdit(mode fmMode, v string) tea.Cmd {
 		}
 		return fileOp("moved "+t.name+" to "+where, "", func() error { return c.MoveFile(src, dst) })
 	case fmUpload:
-		local := expandHome(v)
-		name := filepath.Base(local)
-		dest := relPath(f.dir, name)
-		m.appendLog(">>> upload " + local + " → " + dest)
-		return fileOp("uploaded "+name, name, func() error {
-			data, err := os.ReadFile(local)
-			if err != nil {
-				return err
-			}
-			return c.UploadFile("gcodes", dest, data)
-		})
+		print := f.uploadPrint
+		f.uploadPrint = false
+		return m.uploadLocal(expandHome(v), print)
 	}
 	return nil
 }
@@ -483,6 +482,9 @@ func (m model) renderFileMgr(w, rowsFit int) ([]string, string) {
 		return append(lines, consoleErrStyle.Render(f.err)), ""
 	}
 
+	if f.pick.open {
+		return m.renderPicker(w, rowsFit-1), "enter choose / open  •  ← up  •  ~ home  •  . all files  •  : type a path  •  esc cancel"
+	}
 	rows := f.rows()
 	cur, _ := f.selected()
 	detailW := 0
@@ -577,7 +579,7 @@ func (m model) renderFileMgr(w, rowsFit int) ([]string, string) {
 	}
 
 	foot := "enter open / print  •  ← up  •  a queue  •  x delete  •  R rename  •  C copy  •  m move\n" +
-		"n new folder  •  u upload  •  s sort  •  r refresh  •  tab history / queue  •  esc close"
+		"n new folder  •  u upload  •  P upload & print  •  s sort  •  r refresh  •  tab history / queue  •  esc close"
 	if f.mode != fmNone {
 		foot = "enter apply  •  esc cancel"
 	}

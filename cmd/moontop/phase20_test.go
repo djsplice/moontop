@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -67,9 +68,18 @@ func newFmPrinter(t *testing.T) *fmPrinter {
 		}
 		data, _ := io.ReadAll(f)
 		p.mu.Lock()
-		p.uploads = append(p.uploads, strings.Join([]string{r.FormValue("root"), r.FormValue("path"), h.Filename, string(data)}, "|"))
+		rec := strings.Join([]string{r.FormValue("root"), r.FormValue("path"), h.Filename, string(data)}, "|")
+		printing := r.FormValue("print") == "true"
+		if printing {
+			rec += "|print"
+		}
+		p.uploads = append(p.uploads, rec)
 		p.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{
+			"item": map[string]any{"path": h.Filename, "root": "gcodes"}, "action": "create_file",
+			"print_started": printing, "print_queued": false}})
 	})
 	return p
 }
@@ -316,27 +326,134 @@ func TestFileManagerEdits(t *testing.T) {
 	}
 }
 
-func TestFileManagerUpload(t *testing.T) {
+func (p *fmPrinter) uploaded() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return strings.Join(p.uploads, ";")
+}
+
+// localDir makes a folder on "this computer" for the picker:
+// a.gcode (older), b.gcode (newer), notes.txt and parts/.
+func localDir(t *testing.T) string {
+	t.Helper()
+	d := t.TempDir()
+	write := func(name, data string, age time.Duration) {
+		p := filepath.Join(d, name)
+		if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		ts := time.Now().Add(-age)
+		_ = os.Chtimes(p, ts, ts)
+	}
+	write("a.gcode", "G28 ; a\n", 2*time.Hour)
+	write("b.gcode", "G28 ; b\n", time.Minute)
+	write("notes.txt", "hi", time.Second)
+	if err := os.Mkdir(filepath.Join(d, "parts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join("parts", "c.gcode"), "G28 ; c\n", time.Hour)
+	return d
+}
+
+func TestFileManagerUploadPicker(t *testing.T) {
 	p := newFmPrinter(t)
 	m := fmOpen(t, p, 160)
 	m = fmRun(t, m, m.openFileManager("sub", ""))
-	local := filepath.Join(t.TempDir(), "widget.gcode")
-	if err := os.WriteFile(local, []byte("G28\n"), 0o644); err != nil {
-		t.Fatal(err)
+	d := localDir(t)
+	lastUploadDir = d
+	t.Cleanup(func() { lastUploadDir = "" })
+
+	m = fmKeys(t, m, "u")
+	pk := m.jobs.files.pick
+	if !pk.open || pk.print {
+		t.Fatal("u didn't open the picker")
 	}
-	m = fmKeys(t, m, "u", local, "enter")
-	p.mu.Lock()
-	got := strings.Join(p.uploads, ";")
-	p.mu.Unlock()
-	if got != "gcodes|sub|widget.gcode|G28\n" {
+	var names []string
+	for _, e := range pk.entries {
+		names = append(names, e.name)
+	}
+	if strings.Join(names, ",") != "parts,b.gcode,a.gcode" {
+		t.Fatalf("entries = %v (folders, then gcode newest first; no .txt)", names)
+	}
+	v := m.View()
+	for _, s := range []string{"Upload from this computer", tildePath(d), "parts", "b.gcode", "gcode files", ": type a path"} {
+		if !strings.Contains(v, s) {
+			t.Errorf("picker lacks %q:\n%s", s, v)
+		}
+	}
+	m = fmKeys(t, m, ".")
+	if len(m.jobs.files.pick.entries) != 4 {
+		t.Fatalf(". should show all files: %d", len(m.jobs.files.pick.entries))
+	}
+	m = fmKeys(t, m, ".", "enter") // into parts/
+	if !strings.HasSuffix(m.jobs.files.pick.dir, "parts") {
+		t.Fatalf("dir = %q", m.jobs.files.pick.dir)
+	}
+	m = fmKeys(t, m, "left") // back up, parts selected
+	if m.jobs.files.pick.entries[m.jobs.files.pick.cursor].name != "parts" {
+		t.Fatal("up should select the folder we came from")
+	}
+	m = fmKeys(t, m, "down", "enter") // b.gcode
+	if m.jobs.files.pick.open {
+		t.Fatal("picker still open")
+	}
+	if got := p.uploaded(); got != "gcodes|sub|b.gcode|G28 ; b\n" {
 		t.Fatalf("uploads = %q", got)
 	}
-	if !strings.Contains(m.View(), "uploaded widget.gcode") {
+	if !strings.Contains(m.View(), "uploaded b.gcode") {
 		t.Errorf("no status:\n%s", m.View())
 	}
-	m = fmKeys(t, m, "u", filepath.Join(t.TempDir(), "missing.gcode"), "enter")
-	if !strings.Contains(m.View(), "!! uploaded missing.gcode") && !strings.Contains(m.View(), "no such file") {
+	// The picker remembers the folder; esc cancels it.
+	m = fmKeys(t, m, "u")
+	if m.jobs.files.pick.dir != d {
+		t.Fatalf("picker started in %q", m.jobs.files.pick.dir)
+	}
+	m = fmKeys(t, m, "esc")
+	if m.jobs.files.pick.open || !m.jobs.open {
+		t.Fatal("esc should close only the picker")
+	}
+	// ":" types a path instead.
+	m = fmKeys(t, m, "u", ":")
+	if m.jobs.files.mode != fmUpload || !strings.HasPrefix(m.jobs.files.input.Value(), d) {
+		t.Fatalf("typed path: mode %d, %q", m.jobs.files.mode, m.jobs.files.input.Value())
+	}
+	m = fmKeys(t, m, "ctrl+u", filepath.Join(d, "missing.gcode"), "enter")
+	if !strings.Contains(m.View(), "!! ") {
 		t.Errorf("missing file not reported:\n%s", m.View())
+	}
+}
+
+func TestFileManagerUploadAndPrint(t *testing.T) {
+	p := newFmPrinter(t)
+	m := fmOpen(t, p, 160)
+	m = fmRun(t, m, m.openFileManager("", ""))
+	lastUploadDir = localDir(t)
+	t.Cleanup(func() { lastUploadDir = "" })
+
+	m = fmKeys(t, m, "P")
+	if !m.jobs.files.pick.print || !strings.Contains(m.View(), "Upload and print") {
+		t.Fatal("P didn't open the picker for upload & print")
+	}
+	m = fmKeys(t, m, "down", "enter") // b.gcode
+	if m.confirmation == nil || !strings.Contains(m.confirmation.prompt, "Upload b.gcode") || !strings.Contains(m.confirmation.prompt, "print it?") {
+		t.Fatalf("no confirmation: %+v", m.confirmation)
+	}
+	if p.uploaded() != "" {
+		t.Fatal("uploaded before the confirmation")
+	}
+	m, cmd := updateCmd(t, m, keyRunes("y"))
+	m = fmRun(t, m, cmd)
+	if got := p.uploaded(); got != "gcodes||b.gcode|G28 ; b\n|print" {
+		t.Fatalf("uploads = %q", got)
+	}
+	if !strings.Contains(m.View(), "uploaded b.gcode") || !strings.Contains(m.View(), "printing") {
+		t.Errorf("status:\n%s", m.View())
+	}
+	// Not while a print is running.
+	m.job.State = "printing"
+	m = fmKeys(t, m, "P")
+	if m.jobs.files.pick.open {
+		t.Fatal("upload & print offered during a print")
 	}
 }
 

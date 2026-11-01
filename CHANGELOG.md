@@ -21,8 +21,10 @@ Releases are cut from this file: adding a `## [x.y.z] - YYYY-MM-DD` heading on
   tokens are refreshed for the websocket and file transfers.
 - File manager: a Files tab in the Jobs screen (`f` in the Files pane opens it
   at the selected file) with folders, slicer metadata columns, a details
-  column, and print, queue, rename, copy, move, delete, new folder and upload
-  from this computer.
+  column, and print, queue, rename, copy, move, delete, new folder, upload and
+  upload & print (`P`) from this computer through a local file browser.
+- `moontop upload FILE…` and `moontop print FILE` (upload, then start it), for
+  scripts and slicer post-processing. Uploads stream from disk.
 - The Files pane and the file manager follow `notify_filelist_changed`, so
   uploads and changes from elsewhere appear at once.
 - Colour schemes in setup → Display: `phosphor` (all green), `amber`,

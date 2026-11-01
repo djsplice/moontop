@@ -123,3 +123,33 @@ func TestRunDump(t *testing.T) {
 		t.Fatalf("no match: exit %d", code)
 	}
 }
+
+func TestUploadAndPrintCommands(t *testing.T) {
+	p := newFmPrinter(t)
+	d := localDir(t)
+	var out, errb strings.Builder
+	a, b := filepath.Join(d, "a.gcode"), filepath.Join(d, "b.gcode")
+	if code := runUpload([]string{"-host", p.Host(), "-dir", "/sub/", a, b}, false, &out, &errb); code != 0 {
+		t.Fatalf("upload exit %d: %s", code, errb.String())
+	}
+	if out.String() != "uploaded sub/a.gcode\nuploaded sub/b.gcode\n" {
+		t.Fatalf("stdout = %q", out.String())
+	}
+	if got := p.uploaded(); !strings.Contains(got, "gcodes|sub|a.gcode|") || strings.Contains(got, "|print") {
+		t.Fatalf("uploads = %q", got)
+	}
+	out.Reset()
+	if code := runUpload([]string{"-host", p.Host(), b}, true, &out, &errb); code != 0 || out.String() != "uploaded b.gcode, printing\n" {
+		t.Fatalf("print exit %d, %q %s", code, out.String(), errb.String())
+	}
+	errb.Reset()
+	if code := runUpload([]string{"-host", p.Host(), filepath.Join(d, "nope.gcode")}, false, &out, &errb); code != 1 || !strings.Contains(errb.String(), "nope.gcode") {
+		t.Fatalf("missing file: exit %d, %q", code, errb.String())
+	}
+	if code := runUpload([]string{"-host", p.Host()}, false, &out, &errb); code != 2 {
+		t.Fatalf("no files: exit %d", code)
+	}
+	if code := runUpload([]string{"-host", p.Host(), a, b}, true, &out, &errb); code != 2 {
+		t.Fatalf("print two files: exit %d", code)
+	}
+}

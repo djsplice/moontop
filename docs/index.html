@@ -93,7 +93,7 @@
         </a>
         <a class="card" href="shots/jobs.webp" data-shot data-caption="Jobs · files, print history, totals and the job queue (F7 / J)">
           <img src="shots/jobs-thumb.webp" width="1120" height="700" alt="Print history with file names, dates, durations, filament used and status" loading="lazy">
-          <span class="card-text"><b>jobs</b><kbd>F7</kbd><kbd>J</kbd><span>a file manager with slicer details, print history and totals, the job queue.</span></span>
+          <span class="card-text"><b>jobs</b><kbd>F7</kbd><kbd>J</kbd><span>a file manager with slicer details and upload &amp; print, print history and totals, the job queue.</span></span>
         </a>
         <a class="card" href="shots/bed-mesh.webp" data-shot data-caption="Bed mesh · a Marlin-style grid, coloured by height, with profiles (F11 / B)">
           <img src="shots/bed-mesh-thumb.webp" width="1120" height="700" alt="Bed mesh shown as a 6 by 6 grid of coloured boxes with height values" loading="lazy">
@@ -147,11 +147,13 @@
     </section>
 
     <section class="section modes" aria-labelledby="modes-title">
-      <h2 id="modes-title"><span class="hash">#</span> four ways to run it</h2>
+      <h2 id="modes-title"><span class="hash">#</span> ways to run it</h2>
       <pre class="term-block"><code><span class="ps1">$</span> moontop                       <span class="c"># full-screen dashboard</span>
 <span class="ps1">$</span> moontop console               <span class="c"># inline gcode console in this terminal, with history</span>
 <span class="ps1">$</span> moontop gcode G28 "M117 hi"   <span class="c"># one-shot gcode with exit codes, for scripts</span>
 <span class="ps1">$</span> echo BED_MESH_CALIBRATE | moontop gcode -echo
+<span class="ps1">$</span> moontop print benchy.gcode   <span class="c"># upload it and start printing</span>
+<span class="ps1">$</span> moontop upload -dir parts *.gcode
 <span class="ps1">$</span> moontop dump -prefix AFC      <span class="c"># printer objects as JSON</span>
 <span class="ps1">$</span> moontop version</code></pre>
       <p class="section-lead small">With no <code>-host</code> or <code>$MOONRAKER_HOST</code>, Moontop opens a connection manager with your recent printers. Moonraker logins and API keys work; nothing is installed on the printer.</p>

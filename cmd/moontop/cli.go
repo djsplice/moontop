@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,6 +36,10 @@ func run(args []string) int {
 			return runGcode(args[1:], os.Stdin, os.Stdout, os.Stderr)
 		case "dump":
 			return runDump(args[1:], os.Stdout, os.Stderr)
+		case "upload":
+			return runUpload(args[1:], false, os.Stdout, os.Stderr)
+		case "print":
+			return runUpload(args[1:], true, os.Stdout, os.Stderr)
 		case "moo":
 			fmt.Println(strings.Join(moo.Say(moo.Random(), 44), "\n"))
 			return 0
@@ -58,6 +63,8 @@ Usage:
   moontop gcode [-host ip:port] [flags] CMD… run gcode, print the output, exit
   … | moontop gcode [-host ip:port] [flags]  run gcode read from stdin, one per line
   moontop dump [-host ip:port] [-prefix P]   print printer object status as JSON
+  moontop upload [-host …] [-dir D] FILE…    upload gcode files (to folder D)
+  moontop print [-host …] [-dir D] FILE      upload a gcode file and print it
   moontop version                            print the version
 
 -host defaults to $MOONRAKER_HOST (Moonraker's port is usually 7125).
@@ -285,4 +292,68 @@ func runDump(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// runUpload is `moontop upload` and `moontop print` (upload, then
+// Moonraker starts the print — or queues it, with [job_queue] and a
+// print running). Exit codes: 0 done, 1 an upload or the print failed,
+// 2 usage or connection errors.
+func runUpload(args []string, print bool, stdout, stderr io.Writer) int {
+	name := "upload"
+	if print {
+		name = "print"
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	host := hostFlag(fs)
+	dir := fs.String("dir", "", "folder in the gcodes root to upload into")
+	fs.Usage = usage
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	files := fs.Args()
+	switch {
+	case len(files) == 0:
+		fmt.Fprintf(stderr, "moontop %s: which file? e.g. moontop %s part.gcode\n", name, name)
+		return 2
+	case print && len(files) > 1:
+		fmt.Fprintln(stderr, "moontop print: one file at a time (use upload for several)")
+		return 2
+	}
+	h, ok := resolveHost(*host)
+	if !ok {
+		return 2
+	}
+	log.SetOutput(io.Discard)
+	client, err := dialHost(h)
+	if err != nil {
+		fmt.Fprintf(stderr, "moontop %s: connect to %s: %v\n", name, h, err)
+		return 2
+	}
+	defer client.Close()
+
+	folder := strings.Trim(strings.ReplaceAll(*dir, `\`, "/"), "/")
+	code := 0
+	for _, local := range files {
+		dest := relPath(folder, filepath.Base(local))
+		res, err := client.UploadLocal("gcodes", dest, local, print)
+		if err != nil {
+			fmt.Fprintf(stderr, "moontop %s: %s: %v\n", name, local, err)
+			code = 1
+			continue
+		}
+		msg := "uploaded " + dest
+		switch {
+		case res.PrintStarted:
+			msg += ", printing"
+		case res.PrintQueued:
+			msg += ", added to the job queue"
+		case print:
+			fmt.Fprintf(stderr, "moontop print: %s uploaded, but the print didn't start (is the printer ready and idle?)\n", dest)
+			code = 1
+			continue
+		}
+		fmt.Fprintln(stdout, msg)
+	}
+	return code
 }

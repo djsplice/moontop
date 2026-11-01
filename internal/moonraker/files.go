@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -69,8 +70,44 @@ func (c *Client) FetchFile(root, path string, tail int) ([]byte, bool, error) {
 
 // UploadFile writes a file into a root (path may include folders).
 func (c *Client) UploadFile(root, path string, data []byte) error {
-	var body bytes.Buffer
-	w := multipart.NewWriter(&body)
+	_, err := c.Upload(root, path, int64(len(data)), func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	}, false)
+	return err
+}
+
+// UploadLocal uploads a file from this computer, streaming it.
+func (c *Client) UploadLocal(root, path, local string, print bool) (UploadResult, error) {
+	fi, err := os.Stat(local)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if fi.IsDir() {
+		return UploadResult{}, fmt.Errorf("%s is a folder", local)
+	}
+	return c.Upload(root, path, fi.Size(), func() (io.ReadCloser, error) { return os.Open(local) }, print)
+}
+
+// UploadResult is what Moonraker did with an upload.
+type UploadResult struct {
+	PrintStarted bool `json:"print_started"`
+	PrintQueued  bool `json:"print_queued"`
+}
+
+// uploadClient has no overall timeout: a large file over slow Wi-Fi
+// can take minutes. The dial and response-header waits still time out.
+var uploadClient = &http.Client{Transport: &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	ResponseHeaderTimeout: 10 * time.Minute,
+	TLSHandshakeTimeout:   15 * time.Second,
+}}
+
+// Upload streams size bytes from open() into root/path as a multipart
+// form, with an exact Content-Length (some proxies refuse chunked
+// uploads). print asks Moonraker to start printing it (gcodes only).
+func (c *Client) Upload(root, path string, size int64, open func() (io.ReadCloser, error), print bool) (UploadResult, error) {
+	var head, tail bytes.Buffer
+	w := multipart.NewWriter(&head)
 	dir, name := "", path
 	if i := strings.LastIndex(path, "/"); i >= 0 {
 		dir, name = path[:i], path[i+1:]
@@ -79,31 +116,61 @@ func (c *Client) UploadFile(root, path string, data []byte) error {
 	if dir != "" {
 		_ = w.WriteField("path", dir)
 	}
-	fw, err := w.CreateFormFile("file", name)
+	if print {
+		_ = w.WriteField("print", "true")
+	}
+	if _, err := w.CreateFormFile("file", name); err != nil {
+		return UploadResult{}, err
+	}
+	ct := w.FormDataContentType()
+	headBytes := append([]byte(nil), head.Bytes()...)
+	tw := multipart.NewWriter(&tail)
+	_ = tw.SetBoundary(w.Boundary())
+	_ = tw.Close() // "\r\n--boundary--\r\n"
+	tailBytes := tail.Bytes()
+
+	body := func() (io.ReadCloser, error) {
+		f, err := open()
+		if err != nil {
+			return nil, err
+		}
+		r := io.MultiReader(bytes.NewReader(headBytes), io.LimitReader(f, size), bytes.NewReader(tailBytes))
+		return struct {
+			io.Reader
+			io.Closer
+		}{r, f}, nil
+	}
+	rc, err := body()
 	if err != nil {
-		return err
+		return UploadResult{}, err
 	}
-	if _, err := fw.Write(data); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, httpBase(c.host)+"/server/files/upload", bytes.NewReader(body.Bytes()))
+	req, err := http.NewRequest(http.MethodPost, httpBase(c.host)+"/server/files/upload", rc)
 	if err != nil {
-		return err
+		rc.Close()
+		return UploadResult{}, err
 	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := c.do(req)
+	req.ContentLength = int64(len(headBytes)) + size + int64(len(tailBytes))
+	req.GetBody = body
+	req.Header.Set("Content-Type", ct)
+	resp, err := c.doWith(uploadClient, req)
 	if err != nil {
-		return err
+		return UploadResult{}, err
 	}
 	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode/100 != 2 {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
-		return fmt.Errorf("upload %s: %s %s", path, resp.Status, strings.TrimSpace(string(msg)))
+		return UploadResult{}, fmt.Errorf("upload %s: %s", path, errorMessage(data, resp.Status))
 	}
-	return nil
+	var res UploadResult
+	var env struct {
+		Result *UploadResult `json:"result"`
+	}
+	if json.Unmarshal(data, &env) == nil && env.Result != nil {
+		res = *env.Result
+	} else {
+		_ = json.Unmarshal(data, &res)
+	}
+	return res, nil
 }
 
 // LogRollover starts new log files (application "" = all).

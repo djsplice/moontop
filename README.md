@@ -67,7 +67,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 - [Highlights](#highlights)
 - [Install](#install)
 - [Quick start](#quick-start)
-- [Four ways to run it](#four-ways-to-run-it)
+- [Ways to run it](#ways-to-run-it)
 - [The dashboard](#the-dashboard) — the nine panes
 - [Full-screen tools](#full-screen-tools) — macros, jobs, machine, software, bed mesh, logs, config
 - [Pop-ups from the printer](#pop-ups-from-the-printer) — macro prompts, manual probe
@@ -91,7 +91,7 @@ Everything you reach for in Mainsail or Fluidd — in a terminal, over SSH, on a
 | 🧵 **Filament** | Extrude / retract, load / unload (whatever your printer calls it), tool changes, AFC lanes |
 | 💡 **Outputs** | Fans, output pins and LEDs, discovered from your config |
 | 📜 **Macros** | Every macro with its parameters; pin your favourites; parameter forms; macro prompts |
-| 🖨️ **Printing** | Files and a file manager with slicer details and upload, pause / resume / cancel, progress and ETA, exclude object, history, job queue |
+| 🖨️ **Printing** | Files and a file manager with slicer details, upload and upload & print, pause / resume / cancel, progress and ETA, exclude object, history, job queue |
 | 🗺️ **Bed** | The mesh as a coloured grid of numbers, profiles, calibrate, screws tilt, manual probe |
 | 🛠️ **Machine** | Host and MCU stats, services, power devices, updates, announcements, logs, config editing in `$EDITOR` |
 | 🔐 **Connecting** | A connection manager with your recent printers; Moonraker logins and API keys |
@@ -156,7 +156,7 @@ Then press **`?`** for every key, or **`F2`** for settings. A few things worth k
 
 ---
 
-## Four ways to run it
+## Ways to run it
 
 | Command | What it is |
 | --- | --- |
@@ -164,6 +164,7 @@ Then press **`?`** for every key, or **`F2`** for settings. A few things worth k
 | `moontop console` | An interactive gcode console that lives in your normal terminal. |
 | `moontop gcode CMD…` | Run gcode, print Klipper's output, exit — for scripts and cron. |
 | `moontop dump [-prefix P]` | Print printer object status as JSON (bug reports, test fixtures). |
+| `moontop upload FILE…` / `moontop print FILE` | Upload gcode (`-dir` picks a folder); `print` starts it too — handy as a slicer post-processing step or from a script. |
 
 All of them take `-host`, or read `$MOONRAKER_HOST`; with neither, the dashboard and the console open the connection manager. They all use what you signed in with there, or `$MOONRAKER_API_KEY`.
 
@@ -418,7 +419,8 @@ gcodes  ·  2 folders, 5 files  ·  newest first  ·  21.4 GB free of 25.5 GB
 | `C` | Copy (as "name copy.gcode") |
 | `m` | Move to another folder |
 | `n` | New folder |
-| `u` | Upload a file from this computer (type its path) |
+| `u` | Upload a file from this computer: a browser of your disk opens in the folder you last uploaded from (else `~/Downloads`), gcode files newest first; `.` shows all files, `:` types a path |
+| `P` | Upload & print: the same, then Moonraker starts the print (confirms; not while printing) |
 | `s` | Sort: newest, name, largest |
 
 **History:** `Enter` prints a file again (confirms), `a` queues it, `x` deletes the record (the file stays).<br>

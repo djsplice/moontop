@@ -2,9 +2,14 @@ package moonraker_test
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/justinh-rahb/moontop/internal/moonraker"
+	"github.com/justinh-rahb/moontop/internal/moonraker/moonrakertest"
 )
 
 // A Qidi Q2's listing: its slicer writes numbers as strings, and some
@@ -43,5 +48,34 @@ func TestDirectoryLenientMetadata(t *testing.T) {
 	}
 	if len(d.Files) != 2 || d.Disk.Free != 5e9 {
 		t.Errorf("listing: %+v", d)
+	}
+}
+
+// Older Moonraker answers an upload without the {"result": …} envelope.
+func TestUploadResultBothShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"result": {"action": "create_file", "print_started": true, "print_queued": false}}`,
+		`{"action": "create_file", "print_started": true, "print_queued": false}`,
+	} {
+		srv := moonrakertest.New(t)
+		var gotLen int64
+		var gotPrint string
+		srv.HandleHTTP("/server/files/upload", func(w http.ResponseWriter, r *http.Request) {
+			gotLen = r.ContentLength
+			_ = r.ParseMultipartForm(1 << 20)
+			gotPrint = r.FormValue("print")
+			io.WriteString(w, body)
+		})
+		c, err := moonraker.New(srv.Host())
+		if err != nil {
+			t.Fatal(err)
+		}
+		local := filepath.Join(t.TempDir(), "x.gcode")
+		_ = os.WriteFile(local, []byte("G28\n"), 0o644)
+		res, err := c.UploadLocal("gcodes", "x.gcode", local, true)
+		c.Close()
+		if err != nil || !res.PrintStarted || gotPrint != "true" || gotLen <= 4 {
+			t.Fatalf("%s: res %+v err %v print %q len %d", body, res, err, gotPrint, gotLen)
+		}
 	}
 }
