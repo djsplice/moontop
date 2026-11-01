@@ -280,6 +280,8 @@ type model struct {
 		open   bool
 		cursor int
 	}
+
+	jobs     jobsScreen // Phase 21: history and job queue
 	extLen   float64
 	extSpeed float64
 
@@ -965,6 +967,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress = pm.(progress.Model)
 		return m, cmd
 
+	case jobsLoadedMsg:
+		m.onJobsLoaded(msg)
+		return m, nil
+
+	case jobsActionMsg:
+		if msg.err != nil {
+			m.appendLog(fmt.Sprintf("!! %s: %v", msg.what, msg.err))
+			return m, nil
+		}
+		if m.jobs.open {
+			return m, loadJobsCmd(m.client)
+		}
+		return m, nil
+
 	case echoThen:
 		m.appendLog(msg.line)
 		return m.Update(msg.msg)
@@ -1102,6 +1118,12 @@ func (m *model) setFocus(f focusArea) {
 // arms a confirmation and returns — the actual y/n handling happens
 // globally.
 func (m *model) handleFilesKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, *keys.FilesQueue) && m.files.FilterState() != list.Filtering {
+		if it, ok := m.files.SelectedItem().(fileItem); ok {
+			return m.queueFile(it.info.Path)
+		}
+		return nil
+	}
 	if msg.String() == "enter" {
 		if it, ok := m.files.SelectedItem().(fileItem); ok {
 			name := it.info.Path
@@ -1497,6 +1519,9 @@ func (m model) View() string {
 	}
 	if m.exclude.open {
 		return m.renderExclude()
+	}
+	if m.jobs.open {
+		return m.renderJobs()
 	}
 	if m.prompt.Shown != nil && m.confirmation == nil {
 		return m.renderMacroPrompt()

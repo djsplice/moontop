@@ -24,6 +24,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setup.open = false
 		m.browser.open = false
 		m.macroForm = nil
+		m.jobs.open = false
 		return m, m.armEmergencyStop()
 	}
 
@@ -106,6 +107,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.handleExcludeKey(msg)
 	}
+	if m.jobs.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleJobsKey(msg)
+	}
 
 	// A one-line edit (AFC lane settings) owns the keyboard.
 	if m.lineEdit != nil {
@@ -153,6 +160,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, *keys.Macros):
 			m.openBrowser()
 			return m, nil
+		case key.Matches(msg, *keys.Jobs):
+			return m, m.openJobs()
 		case key.Matches(msg, *keys.NextPane):
 			m.cycleFocus(1)
 			return m, nil

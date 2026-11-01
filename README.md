@@ -44,6 +44,13 @@ edges. Single-printer, single-host, no auth, no persistence.
 - **Exclude object** — during a print with labelled objects, `O` (or
   `F4`) lists them with the one printing now and those excluded;
   `Enter` excludes one after a confirmation.
+- **Jobs** — `J` (or `F7`) opens print history and the job queue:
+  recent prints with result, date, print time and filament, lifetime
+  totals; `Enter` prints one again (confirms), `a` queues it, `x`
+  deletes its record. The Queue tab shows the queued files and the
+  queue state (`s` starts or pauses it, `x` removes one); from Files,
+  `a` queues the selected file. Both are optional Moonraker components
+  (`[history]`, `[job_queue]`), and the screen says when one is off.
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of

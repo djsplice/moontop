@@ -50,6 +50,8 @@ var notificationHandlers = map[string]notificationHandler{
 	moonraker.MethodKlippyReady:        (*model).onKlippyReady,
 	moonraker.MethodKlippyShutdown:     (*model).onKlippyShutdown,
 	moonraker.MethodKlippyDisconnected: (*model).onKlippyDisconnected,
+	moonraker.MethodHistoryChanged:     (*model).onJobsChanged,
+	moonraker.MethodJobQueueChanged:    (*model).onJobsChanged,
 }
 
 // listenNotifications blocks on one notification, then is re-issued by

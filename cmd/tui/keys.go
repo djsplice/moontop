@@ -105,23 +105,23 @@ func bind(keys []string, help, desc string) *key.Binding {
 
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
-	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter *key.Binding
-	Pause, Resume, Cancel, Exclude                                       *key.Binding
-	Restart, FwRestart                                                   *key.Binding
-	Confirm, Deny, HelpScroll                                            *key.Binding
-	FilesMove, FilesFilter, FilesStart                                   *key.Binding
-	JogX, JogY, JogZ, StepDown, StepUp                                   *key.Binding
-	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                    *key.Binding
-	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                              *key.Binding
-	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract       *key.Binding
-	OutputOff, LEDColor                                                  *key.Binding
-	Macros, MacroMove, MacroRun, MacroUnpin                              *key.Binding
-	FilLoad, FilUnload, Level                                            *key.Binding
-	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                  *key.Binding
-	TempEditType, TempEditApply, TempEditCancel                          *key.Binding
-	ConsoleSend, ConsoleHistory                                          *key.Binding
-	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                      *key.Binding
-	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                   *key.Binding
+	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs *key.Binding
+	Pause, Resume, Cancel, Exclude                                             *key.Binding
+	Restart, FwRestart                                                         *key.Binding
+	Confirm, Deny, HelpScroll                                                  *key.Binding
+	FilesMove, FilesFilter, FilesStart, FilesQueue                             *key.Binding
+	JogX, JogY, JogZ, StepDown, StepUp                                         *key.Binding
+	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                          *key.Binding
+	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                    *key.Binding
+	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract             *key.Binding
+	OutputOff, LEDColor                                                        *key.Binding
+	Macros, MacroMove, MacroRun, MacroUnpin                                    *key.Binding
+	FilLoad, FilUnload, Level                                                  *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                        *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                                *key.Binding
+	ConsoleSend, ConsoleHistory                                                *key.Binding
+	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                            *key.Binding
+	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                         *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
@@ -132,6 +132,7 @@ var keys = struct {
 	JumpPane:     bind([]string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}, "1–9", "jump to pane by number"),
 	ToggleFilter: bind([]string{"ctrl+o"}, "ctrl+o", "show/hide filtered console lines"),
 	Macros:       bind([]string{"f3", "g"}, "F3/g", "macros: all of them, filter, run, pin"),
+	Jobs:         bind([]string{"f7", "J"}, "F7/J", "jobs: print history, totals, job queue"),
 
 	Pause:   bind([]string{"p"}, "p", "pause print"),
 	Exclude: bind([]string{"f4", "O"}, "O/F4", "objects: exclude one from the print (confirms)"),
@@ -150,6 +151,7 @@ var keys = struct {
 	FilesMove:   bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select file"),
 	FilesFilter: bind([]string{"/"}, "/", "filter files (esc clears)"),
 	FilesStart:  bind([]string{"enter"}, "enter", "print selected file (confirms)"),
+	FilesQueue:  bind([]string{"a"}, "a", "add the selected file to the job queue"),
 
 	// Toolhead: WASD jogs XY, space jumps (Z up), c crouches (Z down);
 	// the arrows move the field cursor and change the step.
@@ -250,6 +252,7 @@ var registry = []keyEntry{
 	{b: keys.Help, scope: scopeGlobal, footer: true},
 	{b: keys.Setup, scope: scopeGlobal},
 	{b: keys.Macros, scope: scopeGlobal},
+	{b: keys.Jobs, scope: scopeGlobal},
 	{b: keys.EStop, scope: scopeGlobal, footer: true},
 	{b: keys.NextPane, scope: scopeGlobal, footer: true},
 	{b: keys.PrevPane, scope: scopeGlobal},
@@ -268,6 +271,7 @@ var registry = []keyEntry{
 	{b: keys.FilesMove, scope: scopeFiles, short: "select", footer: true, widget: true},
 	{b: keys.FilesFilter, scope: scopeFiles, short: "filter", footer: true, widget: true},
 	{b: keys.FilesStart, scope: scopeFiles, short: "print", footer: true},
+	{b: keys.FilesQueue, scope: scopeFiles, short: "queue", footer: true},
 
 	{b: keys.JogX, scope: scopeToolhead, short: "X", footer: true, when: canMove},
 	{b: keys.JogY, scope: scopeToolhead, short: "Y", footer: true, when: canMove},
