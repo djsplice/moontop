@@ -290,6 +290,8 @@ type model struct {
 	machine   machineScreen // Phase 22: host, MCUs, services, power
 	updates   updatesScreen // Phase 23: updates and announcements
 	mesh      meshScreen    // Phase 24: bed mesh, screws tilt
+	logs      logScreen     // Phase 25: logs
+	cfgFiles  cfgScreen     // Phase 25: config files
 	probeStep int           // manual probe step (index into probeSteps)
 	extLen    float64
 	extSpeed  float64
@@ -452,9 +454,14 @@ func formatBytes(n int64) string {
 
 func initialModel(client *moonraker.Client) model {
 	ti := textinput.New()
-	ti.Placeholder = "Type a gcode command (e.g. M115, G28) and press Enter"
+	ti.Placeholder = "Type a gcode command (e.g. M115, G28) and press Enter; tab completes"
 	ti.Prompt = "> "
 	ti.CharLimit = 256
+	ti.ShowSuggestions = true
+	ti.CompletionStyle = consoleInfoStyle
+	// Up/down are history; ctrl+n / ctrl+p cycle completions.
+	ti.KeyMap.NextSuggestion.SetKeys("ctrl+n")
+	ti.KeyMap.PrevSuggestion.SetKeys("ctrl+p")
 
 	vp := viewport.New(40, 10)
 
@@ -907,6 +914,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, c := range msg.commands {
 				m.gcodeCommands[c] = true
 			}
+			cmds := append([]string(nil), msg.commands...)
+			sort.Strings(cmds)
+			m.input.SetSuggestions(cmds)
 		}
 		return m, nil
 
@@ -989,6 +999,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pm, cmd := m.progress.Update(msg)
 		m.progress = pm.(progress.Model)
 		return m, cmd
+
+	case endstopsMsg:
+		m.onEndstops(msg)
+		return m, nil
+	case logListMsg:
+		return m, m.onLogList(msg)
+	case logTextMsg:
+		m.onLogText(msg)
+		return m, nil
+	case logTickMsg:
+		return m, m.onLogTick()
+	case cfgListMsg:
+		m.onCfgList(msg)
+		return m, nil
+	case cfgTextMsg:
+		m.onCfgText(msg)
+		return m, nil
+	case startEditorMsg:
+		return m, m.onStartEditor(msg)
+	case editorDoneMsg:
+		return m, m.onEditorDone(msg)
+	case cfgUploadedMsg:
+		return m, m.onCfgUploaded(msg)
 
 	case updatesLoadedMsg:
 		m.onUpdatesLoaded(msg)
@@ -1603,6 +1636,12 @@ func (m model) View() string {
 	if m.mesh.open {
 		return m.renderMesh()
 	}
+	if m.logs.open {
+		return m.renderLogs()
+	}
+	if m.cfgFiles.open {
+		return m.renderConfig()
+	}
 	if m.prompt.Shown != nil && m.confirmation == nil {
 		return m.renderMacroPrompt()
 	}
@@ -1619,7 +1658,7 @@ func (m model) View() string {
 		focusJog:      m.renderJog,
 		focusFiles:    m.renderFiles,
 		focusTuning:   m.renderTuning,
-		focusConsole:  func() string { return m.viewport.View() + "\n" + m.input.View() },
+		focusConsole:  func() string { return m.viewport.View() + "\n" + m.renderConsoleInput() },
 	}
 	pane := func(f focusArea) string {
 		return renderPanel(m.paneTitle(f), bodies[f](), m.focus == f, m.layout.w(f), m.layout.h(f))
@@ -1789,6 +1828,10 @@ func paneName(f focusArea) string {
 func (m model) paneTitle(f focusArea) string {
 	t := fmt.Sprintf("%d %s", paneNumber(f), paneName(f))
 	if f == focusConsole {
+		// The macro being typed: its parameters not typed yet.
+		if hint := m.consoleHint(); hint != "" && m.focus == focusConsole {
+			return t + " · " + hint
+		}
 		switch {
 		case m.showFiltered:
 			t += " · showing filtered lines (ctrl+o hides)"

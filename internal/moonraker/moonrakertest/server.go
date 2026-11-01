@@ -40,6 +40,15 @@ type Server struct {
 	calls    []Call
 	conns    map[*websocket.Conn]*sync.Mutex
 	connCh   chan struct{}
+	http     map[string]http.HandlerFunc // plain HTTP, by path prefix
+}
+
+// HandleHTTP serves plain HTTP requests whose path starts with prefix
+// (file downloads and uploads, which Moonraker serves over HTTP).
+func (s *Server) HandleHTTP(prefix string, h http.HandlerFunc) {
+	s.mu.Lock()
+	s.http[prefix] = h
+	s.mu.Unlock()
 }
 
 // New starts a fake server and registers cleanup with t.
@@ -49,6 +58,7 @@ func New(t testing.TB) *Server {
 		handlers: map[string]Handler{},
 		conns:    map[*websocket.Conn]*sync.Mutex{},
 		connCh:   make(chan struct{}, 16),
+		http:     map[string]http.HandlerFunc{},
 	}
 	s.Handle("server.info", Result(map[string]any{"klippy_connected": true, "klippy_state": "ready"}))
 	empty := Result(map[string]any{"eventtime": 0.0, "status": map[string]any{}})
@@ -165,7 +175,20 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return
 
 func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/websocket" {
-		http.NotFound(w, r)
+		s.mu.Lock()
+		var h http.HandlerFunc
+		best := ""
+		for p, f := range s.http {
+			if strings.HasPrefix(r.URL.Path, p) && len(p) > len(best) {
+				best, h = p, f
+			}
+		}
+		s.mu.Unlock()
+		if h == nil {
+			http.NotFound(w, r)
+			return
+		}
+		h(w, r)
 		return
 	}
 	conn, err := upgrader.Upgrade(w, r, nil)

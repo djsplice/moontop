@@ -105,23 +105,23 @@ func bind(keys []string, help, desc string) *key.Binding {
 
 // keys holds every dashboard binding by name, for handlers.
 var keys = struct {
-	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine, Updates, BedMesh *key.Binding
-	Pause, Resume, Cancel, Exclude                                                                        *key.Binding
-	Restart, FwRestart                                                                                    *key.Binding
-	Confirm, Deny, HelpScroll                                                                             *key.Binding
-	FilesMove, FilesFilter, FilesStart, FilesQueue                                                        *key.Binding
-	JogX, JogY, JogZ, StepDown, StepUp                                                                    *key.Binding
-	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                                     *key.Binding
-	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                               *key.Binding
-	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                                        *key.Binding
-	OutputOff, LEDColor                                                                                   *key.Binding
-	Macros, MacroMove, MacroRun, MacroUnpin                                                               *key.Binding
-	FilLoad, FilUnload, Level                                                                             *key.Binding
-	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                                   *key.Binding
-	TempEditType, TempEditApply, TempEditCancel                                                           *key.Binding
-	ConsoleSend, ConsoleHistory                                                                           *key.Binding
-	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                                       *key.Binding
-	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                                    *key.Binding
+	EStop, Quit, Help, Setup, NextPane, PrevPane, JumpPane, ToggleFilter, Jobs, Machine, Updates, BedMesh, Logs, Config *key.Binding
+	Pause, Resume, Cancel, Exclude                                                                                      *key.Binding
+	Restart, FwRestart                                                                                                  *key.Binding
+	Confirm, Deny, HelpScroll                                                                                           *key.Binding
+	FilesMove, FilesFilter, FilesStart, FilesQueue                                                                      *key.Binding
+	JogX, JogY, JogZ, StepDown, StepUp                                                                                  *key.Binding
+	ThMove, ThType, ThEdit, ThEditApply, ThEditCancel                                                                   *key.Binding
+	HomeAll, HomeX, HomeY, HomeZ, MotorsOff                                                                             *key.Binding
+	FieldMove, FieldAdjust, FieldType, FieldEdit, Extrude, Retract                                                      *key.Binding
+	OutputOff, LEDColor                                                                                                 *key.Binding
+	Macros, MacroMove, MacroRun, MacroUnpin                                                                             *key.Binding
+	FilLoad, FilUnload, Level, Endstops                                                                                 *key.Binding
+	TempsMove, TempSet, TempOff, TempAllOff, TempPreset                                                                 *key.Binding
+	TempEditType, TempEditApply, TempEditCancel                                                                         *key.Binding
+	ConsoleSend, ConsoleHistory                                                                                         *key.Binding
+	AfcMove, AfcLoad, AfcUnload, AfcEject, AfcClear                                                                     *key.Binding
+	AfcMap, AfcMaterial, AfcWeight, AfcColor, AfcSpool                                                                  *key.Binding
 }{
 	EStop:        bind([]string{"ctrl+x"}, "ctrl+x", "emergency stop (confirms)"),
 	Quit:         bind([]string{"ctrl+c", "f10", "q"}, "q/F10", "quit"),
@@ -136,6 +136,8 @@ var keys = struct {
 	Machine:      bind([]string{"f8", "M"}, "F8/M", "machine: host, MCUs, services, power devices"),
 	Updates:      bind([]string{"f9", "U"}, "F9/U", "software updates and announcements"),
 	BedMesh:      bind([]string{"f11", "B"}, "F11/B", "bed mesh: grid, profiles, calibrate, screws tilt"),
+	Logs:         bind([]string{"f12", "L"}, "F12/L", "logs: klippy.log, moonraker.log… (follow, filter, roll over)"),
+	Config:       bind([]string{"E"}, "E", "config files: read, edit in $EDITOR"),
 
 	Pause:   bind([]string{"p"}, "p", "pause print"),
 	Exclude: bind([]string{"f4", "O"}, "O/F4", "objects: exclude one from the print (confirms)"),
@@ -184,6 +186,7 @@ var keys = struct {
 	FilLoad:     bind([]string{"l"}, "l", "load filament (the printer's load macro; setup → Extruder)"),
 	FilUnload:   bind([]string{"u"}, "u", "unload filament (the printer's unload macro)"),
 	Level:       bind([]string{"l"}, "l", "level the gantry: QUAD_GANTRY_LEVEL or Z_TILT_ADJUST"),
+	Endstops:    bind([]string{"e"}, "e", "query endstops (shown in the console)"),
 	MacroMove:   bind([]string{"up", "down", "k", "j"}, "↑↓ j k", "select a pinned macro"),
 	MacroRun:    bind([]string{"enter"}, "enter", "run it (a form first when it takes parameters)"),
 	MacroUnpin:  bind([]string{"x"}, "x", "unpin it from this pane"),
@@ -259,6 +262,8 @@ var registry = []keyEntry{
 	{b: keys.Machine, scope: scopeGlobal},
 	{b: keys.Updates, scope: scopeGlobal},
 	{b: keys.BedMesh, scope: scopeGlobal, when: hasBedMesh},
+	{b: keys.Logs, scope: scopeGlobal},
+	{b: keys.Config, scope: scopeGlobal},
 	{b: keys.EStop, scope: scopeGlobal, footer: true},
 	{b: keys.NextPane, scope: scopeGlobal, footer: true},
 	{b: keys.PrevPane, scope: scopeGlobal},
@@ -297,6 +302,7 @@ var registry = []keyEntry{
 	{b: keys.ThEditCancel, scope: scopeToolheadEdit, short: "cancel", footer: true},
 	{b: keys.MotorsOff, scope: scopeToolhead, when: whileIdle},
 	{b: keys.Level, scope: scopeToolhead, short: "level", footer: true, when: hasLeveling},
+	{b: keys.Endstops, scope: scopeToolhead},
 
 	{b: keys.FieldMove, scope: scopeTuning, short: "row", footer: true},
 	{b: keys.FieldAdjust, scope: scopeTuning, short: "adjust", footer: true},

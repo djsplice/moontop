@@ -173,6 +173,8 @@ func (m *model) handleJogKey(msg tea.KeyMsg) tea.Cmd {
 		return m.home("G28 Y", "home Y")
 	case key.Matches(msg, *keys.HomeZ):
 		return m.home("G28 Z", "home Z")
+	case key.Matches(msg, *keys.Endstops):
+		return m.requireConnected("endstops", queryEndstopsCmd(m.client))
 	case key.Matches(msg, *keys.Level):
 		return m.runLeveling()
 	case key.Matches(msg, *keys.MotorsOff):

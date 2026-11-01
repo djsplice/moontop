@@ -81,6 +81,20 @@ edges. Single-printer, single-host, no auth, no persistence.
   (`PROBE_CALIBRATE`, `Z_ENDSTOP_CALIBRATE`, `MANUAL_PROBE`…), a dialog
   takes the screen: `↑↓` move Z by the step (`TESTZ`), `←→` change the
   step, `Enter` accepts, `Esc` aborts.
+- **Logs** — `L` (or `F12`): klippy.log, moonraker.log and the rest,
+  the last half megabyte, errors / warnings / tracebacks coloured;
+  `←→` switch log, `f` follow (re-read every 2 s), `/` filter, `r`
+  reload, `R` roll over.
+- **Config files** — `E`: the config root; `Enter` reads a file
+  (sections, keys and comments picked out), `e` edits it in `$VISUAL` /
+  `$EDITOR` (Moontop steps aside while it runs), and a changed file is
+  uploaded and the restart that applies it offered (Klipper for `.cfg`,
+  Moonraker for `moonraker.conf`).
+- **Console completion** — `Tab` completes a command (from the printer's
+  own list; `ctrl+n` / `ctrl+p` pick another), and while you type a
+  macro the Console title shows the parameters you haven't given yet,
+  with their defaults.
+- **Endstops** — `e` in Toolhead queries them (result in the console).
 - **Macros** — every `gcode_macro` the printer has, with its description
   and the parameters its template reads (`params.X|default(…)`, found
   the way Mainsail finds them). `F3` (or `g`) opens a browser of all of

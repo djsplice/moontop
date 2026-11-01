@@ -28,6 +28,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.machine.open = false
 		m.updates.open = false
 		m.mesh.open = false
+		m.logs.open = false
+		m.cfgFiles.open = false
 		return m, m.armEmergencyStop()
 	}
 
@@ -149,6 +151,18 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.handleMeshKey(msg)
 	}
+	if m.logs.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleLogsKey(msg)
+	}
+	if m.cfgFiles.open {
+		if msg.String() == "ctrl+c" {
+			return m.quit()
+		}
+		return m, m.handleConfigKey(msg)
+	}
 
 	// Typing a toolhead position or step, or a Tuning / Extruder
 	// value, owns the keyboard too.
@@ -192,6 +206,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openJobs()
 		case key.Matches(msg, *keys.Machine):
 			return m, m.openMachine()
+		case key.Matches(msg, *keys.Logs):
+			return m, m.openLogs()
+		case key.Matches(msg, *keys.Config):
+			return m, m.openConfig()
 		case key.Matches(msg, *keys.BedMesh):
 			if ok, why := hasBedMesh(&m); !ok {
 				m.appendLog("!! bed mesh: only " + why)
@@ -202,6 +220,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, *keys.Updates):
 			m.updates.open = true
 			return m, loadUpdatesCmd(m.client)
+		case m.focus == focusConsole && msg.String() == "tab" && m.completeConsole():
+			return m, nil
 		case key.Matches(msg, *keys.NextPane):
 			m.cycleFocus(1)
 			return m, nil
