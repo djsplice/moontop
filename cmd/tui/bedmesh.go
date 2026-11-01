@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ---------------------------------------------------------------------------
@@ -59,25 +60,71 @@ func hasBedMesh(m *model) (bool, string) {
 	return ok, "on printers with [bed_mesh]"
 }
 
-// renderMeshGrid draws the matrix Marlin-style.
-func renderMeshGrid(mat [][]float64) []string {
+// renderMeshGrid draws the matrix Marlin-style — back of the bed on
+// top, column and row numbers — with each value in a box coloured by
+// height: green near zero, through cyan to blue below, yellow to red
+// above, scaled to the largest deviation (at least 0.05 mm, so a flat
+// bed stays green). When the boxes don't fit in width × height, the
+// lines between rows go first, then digits.
+func renderMeshGrid(mat [][]float64, width, height int) []string {
 	if len(mat) == 0 {
 		return []string{consoleInfoStyle.Render("No mesh loaded: c calibrates one, or load a profile.")}
 	}
-	cols := len(mat[0])
+	rows, cols := len(mat), len(mat[0])
+	prec, cellW := 3, 8 // " +0.123 "
+	if 5+cols*(cellW+1)+1 > width {
+		prec, cellW = 2, 7 // " +0.12 "
+	}
+	rowLines := rows > 0 && 2*rows+2 <= height // lines between rows
+
+	maxDev := 0.05
+	for _, r := range mat {
+		for _, v := range r {
+			maxDev = math.Max(maxDev, math.Abs(v))
+		}
+	}
+
+	seg := strings.Repeat("─", cellW)
+	rule := func(l, mid, r string) string {
+		parts := make([]string, cols)
+		for i := range parts {
+			parts[i] = seg
+		}
+		return consoleInfoStyle.Render("     " + l + strings.Join(parts, mid) + r)
+	}
 	head := "     "
 	for c := 0; c < cols; c++ {
-		head += fmt.Sprintf("%8d", c)
+		head += fmt.Sprintf(" %*d", cellW, c)
 	}
-	lines := []string{consoleInfoStyle.Render(head)}
-	for r := len(mat) - 1; r >= 0; r-- { // back of the bed on top
-		line := consoleInfoStyle.Render(fmt.Sprintf("%4d ", r))
+	lines := []string{consoleInfoStyle.Render(head), rule("┌", "┬", "┐")}
+	bar := consoleInfoStyle.Render("│")
+	for r := rows - 1; r >= 0; r-- { // back of the bed on top
+		line := consoleInfoStyle.Render(fmt.Sprintf("%4d ", r)) + bar
 		for _, v := range mat[r] {
-			line += fmt.Sprintf("%+8.3f", v)
+			line += meshCellStyle(v/maxDev).Render(fmt.Sprintf(" %+.*f ", prec, v)) + bar
 		}
 		lines = append(lines, line)
+		if rowLines && r > 0 {
+			lines = append(lines, rule("├", "┼", "┤"))
+		}
 	}
-	return lines
+	return append(lines, rule("└", "┴", "┘"))
+}
+
+// meshCellStyle colours a cell by t, its height relative to the largest
+// deviation (-1 … 1).
+func meshCellStyle(t float64) lipgloss.Style {
+	below := []string{"46", "50", "45", "39", "33", "27"}      // green → cyan → blue
+	above := []string{"46", "154", "226", "220", "208", "196"} // green → yellow → red
+	k := int(math.Round(math.Min(1, math.Abs(t)) * 5))
+	bg, fg := above[k], "16"
+	if t < 0 {
+		bg = below[k]
+		if k >= 4 {
+			fg = "231" // white on the dark blues
+		}
+	}
+	return lipgloss.NewStyle().Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(fg))
 }
 
 func meshRange(mat [][]float64) (lo, hi float64) {
@@ -221,7 +268,7 @@ func (m model) renderMesh() string {
 		}
 		lines = append(lines, consoleInfoStyle.Render(info), "")
 	}
-	lines = append(lines, renderMeshGrid(mat)...)
+	lines = append(lines, renderMeshGrid(mat, w, m.height-12)...)
 	lines = append(lines, consoleInfoStyle.Render("     (back of the bed on top)"), "")
 
 	profiles := m.meshProfiles()

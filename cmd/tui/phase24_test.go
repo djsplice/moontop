@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func meshModel(t *testing.T) model {
@@ -31,13 +32,14 @@ func TestBedMeshGrid(t *testing.T) {
 	}
 	v := stripANSI(m.View())
 	for _, s := range []string{"Bed mesh", "Profile default", "range -0.050 to +0.100 (0.150 mm)", "X 10–220  Y 10–220",
-		"             0       1       2", "back of the bed on top", "default  loaded", "pei_hot"} {
+		"             0        1        2",
+		"     ┌────────┬────────┬────────┐", "     ├────────┼────────┼────────┤", "     └────────┴────────┴────────┘", "back of the bed on top", "default  loaded", "pei_hot"} {
 		if !strings.Contains(v, s) {
 			t.Errorf("mesh view lacks %q:\n%s", s, v)
 		}
 	}
 	// Marlin-style: the back row (2) on top, the front row (0) last.
-	back, front := strings.Index(v, "   2   +0.100  +0.075  +0.060"), strings.Index(v, "   0   -0.050  +0.000  +0.025")
+	back, front := strings.Index(v, "   2 │ +0.100 │ +0.075 │ +0.060 │"), strings.Index(v, "   0 │ -0.050 │ +0.000 │ +0.025 │")
 	if back < 0 || front < 0 || back > front {
 		t.Fatalf("rows out of order (back %d, front %d):\n%s", back, front, v)
 	}
@@ -132,5 +134,42 @@ func TestManualProbe(t *testing.T) {
 	m.raw.merge("manual_probe", map[string]any{"is_active": false})
 	if strings.Contains(m.View(), "paper test") {
 		t.Fatal("dialog stayed after the probe ended")
+	}
+}
+
+func TestMeshGridColoursAndFit(t *testing.T) {
+	// Colours: zero green, the most negative dark blue, the most positive red.
+	if bg := meshCellStyle(0).GetBackground(); bg != lipgloss.Color("46") {
+		t.Errorf("zero: %v", bg)
+	}
+	if bg := meshCellStyle(-1).GetBackground(); bg != lipgloss.Color("27") {
+		t.Errorf("lowest: %v", bg)
+	}
+	if bg := meshCellStyle(1).GetBackground(); bg != lipgloss.Color("196") {
+		t.Errorf("highest: %v", bg)
+	}
+	// A 9×9 mesh in a small space: no lines between rows, two decimals.
+	var mat [][]float64
+	for r := 0; r < 9; r++ {
+		row := make([]float64, 9)
+		for c := range row {
+			row[c] = float64(r*9+c) / 100
+		}
+		mat = append(mat, row)
+	}
+	lines := renderMeshGrid(mat, 80, 15) // full cells need 87, compact 78
+	if len(lines) != 9+3 {
+		t.Fatalf("%d lines, want 12 (header, top, 9 rows, bottom)", len(lines))
+	}
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w > 80 {
+			t.Fatalf("line %d wide: %q", w, stripANSI(l))
+		}
+		if strings.Contains(stripANSI(l), "├") {
+			t.Fatal("row separators kept in a short space")
+		}
+	}
+	if !strings.Contains(stripANSI(lines[2]), "│ +0.72 │") {
+		t.Fatalf("back row: %q", stripANSI(lines[2]))
 	}
 }
